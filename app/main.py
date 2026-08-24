@@ -16,16 +16,18 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import config
-from .daytime import BadTimestamp, format_iso, now_local, parse_iso
+from .daytime import BadTimestamp, day_key, format_iso, now_local, parse_iso
 from .models import (
     EntryCreate,
     EntryOut,
     EntryUpdate,
+    QuoteOut,
     StatsOut,
     ValidationProblem,
     to_out,
     validate_page_range,
 )
+from .quotes import QuoteSource
 from .stats import compute_stats
 from .storage import Storage, load_storage_or_exit
 
@@ -39,6 +41,7 @@ API_ROUTES = [
     "PATCH  /api/entries/{id}",
     "DELETE /api/entries/{id}",
     "GET    /api/stats",
+    "GET    /api/quote",
 ]
 
 
@@ -71,7 +74,10 @@ def _normalize_read_at(value: str | None) -> str | None:
         raise ValidationProblem(str(exc)) from None
 
 
-def create_app(storage: Storage) -> FastAPI:
+def create_app(storage: Storage, quotes: QuoteSource | None = None) -> FastAPI:
+    # The quote source is injectable for the same reason storage is (DECISIONS.md
+    # 3.7): no test ever reads the real quotes.txt.
+    quotes = quotes or QuoteSource(config.quotes_file())
     app = FastAPI(
         title="Reading Tracker",
         version="1.0.0",
@@ -176,6 +182,21 @@ def create_app(storage: Storage) -> FastAPI:
     @app.get("/api/stats", response_model=StatsOut)
     async def read_stats() -> dict[str, Any]:
         return compute_stats(storage.all(), now_local())
+
+    @app.get("/api/quote", response_model=QuoteOut)
+    async def read_quote() -> dict[str, str]:
+        """Today's quote, read off disk on every request.
+
+        Reading per-request rather than caching at startup means editing
+        quotes.txt shows up on the next page load with no restart. The same
+        logical day always yields the same quote, so reloading never shuffles it
+        (DECISIONS.md 10).
+
+        This handler touches `quotes` and nothing else. It has no access to
+        `storage` and no failure mode -- a missing or empty file is a fallback
+        string with a 200, never an error.
+        """
+        return {"quote": quotes.for_day(day_key(now_local()))}
 
     return app
 

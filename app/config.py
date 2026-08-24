@@ -13,15 +13,28 @@ DEFAULT_PORT = 8420
 
 PORT_ENV = "PAGECOUNT_PORT"
 DATA_FILE_ENV = "PAGECOUNT_DATA_FILE"
+QUOTES_FILE_ENV = "PAGECOUNT_QUOTES_FILE"
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DATA_FILE = REPO_ROOT / "data" / "entries.json"
+# DECISIONS.md 10: quotes are source, not entry data, and live in their own file
+# at the repo root where she can open them in any text editor.
+DEFAULT_QUOTES_FILE = REPO_ROOT / "quotes.txt"
 
 
 def data_file() -> Path:
     """Path to the JSON data file, overridable for tests via PAGECOUNT_DATA_FILE."""
     override = os.environ.get(DATA_FILE_ENV)
     return Path(override).expanduser() if override else DEFAULT_DATA_FILE
+
+
+def quotes_file() -> Path:
+    """Path to the quote file, overridable for tests via PAGECOUNT_QUOTES_FILE.
+
+    Separate from data_file() and always will be -- see DECISIONS.md 10.
+    """
+    override = os.environ.get(QUOTES_FILE_ENV)
+    return Path(override).expanduser() if override else DEFAULT_QUOTES_FILE
 
 
 def port() -> int:

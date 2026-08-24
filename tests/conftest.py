@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.main import create_app  # noqa: E402
+from app.quotes import QuoteSource  # noqa: E402
 from app.storage import Storage  # noqa: E402
 
 TEST_TZ = "America/New_York"
@@ -44,8 +45,15 @@ def storage(data_file: Path) -> Storage:
 
 
 @pytest.fixture
-def client(storage: Storage) -> TestClient:
-    return TestClient(create_app(storage))
+def quotes_file(tmp_path: Path) -> Path:
+    """A quote file under tmp_path. Deliberately NOT created -- a test that wants
+    content writes it. No test ever reads the repo's real quotes.txt."""
+    return tmp_path / "quotes.txt"
+
+
+@pytest.fixture
+def client(storage: Storage, quotes_file: Path) -> TestClient:
+    return TestClient(create_app(storage, QuoteSource(quotes_file)))
 
 
 def local(text: str) -> datetime:

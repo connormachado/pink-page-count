@@ -6,11 +6,12 @@ how the pages add up. Runs entirely on this Mac: no account, no cloud, no intern
 Your data lives in one plain JSON file — `data/entries.json` — that you can open and
 edit in any text editor.
 
-**Phase 2 of 4: the main page.** The backend is done and the main page is built — the
-number, the three chips, the page inputs with a live preview, and the log with edit and
-delete. The stats page, the rotating quotes, and the export button come in Phases 3
-and 4, and the built front end is not served by `run.command` yet: for now the two
-run side by side (see *Working on the front end* below).
+**Phase 3a of 4: quotes, animations, and milestones.** The backend is done and the main
+page is built — the number, the three chips, the page inputs with a live preview, the log
+with edit and delete, a quote that changes once a day, a count-up when you save, and a
+small celebration every thousand pages. The stats page and the export button come next,
+and the built front end is not served by `run.command` yet: for now the two run side by
+side (see *Working on the front end* below).
 
 ---
 
@@ -119,6 +120,7 @@ file.
 | `PATCH` | `/api/entries/{id}` | any of `page_start`, `page_end`, `note`, `read_at` |
 | `DELETE` | `/api/entries/{id}` | — |
 | `GET` | `/api/stats` | — |
+| `GET` | `/api/quote` | — |
 
 **Page counting is inclusive.** Pages 43–71 is 29 pages. Pages 43–43 is 1 page.
 
@@ -132,6 +134,24 @@ Errors come back as `{"error": "a human readable message"}`.
 
 FastAPI's `/docs` page is deliberately disabled — it loads its JavaScript from a CDN
 and would render blank offline. The raw schema is at `/openapi.json`.
+
+---
+
+## The quotes
+
+The line at the top of the page comes from **`quotes.txt`** in this folder. Open it in
+any text editor and make it yours — add your own, delete the ones you don't like. One
+quote per line; blank lines and lines starting with `#` are ignored.
+
+You get the same quote all day, and a different one tomorrow. Reloading the page won't
+shuffle it.
+
+Save the file and reload the page — no restart needed. If the file goes missing or ends
+up empty, the page shows a default line rather than an error.
+
+**`quotes.txt` has nothing to do with `data/entries.json`.** Nothing you do to your
+quotes can affect a single page you've logged; the code that reads quotes has no way to
+reach your reading log at all.
 
 ---
 
@@ -216,14 +236,17 @@ app/
   storage.py      atomic writes and loading -- the durability code
   models.py       request and response shapes, page-range validation
   stats.py        pages today, streaks
+  quotes.py       picks the day's quote. Cannot reach your reading log
   main.py         the API routes
+quotes.txt        the quotes. Yours to edit -- see below
 web/
   index.html
   vite.config.ts  dev server, and the /api proxy to port 8420
   public/fonts/   Fraunces, vendored -- never fetched
   src/
     tokens.css    every color, duration, and font, defined once
-    api.ts        the five API calls and the two kinds of failure
+    api.ts        the API calls and the two kinds of failure
+    milestones.ts which thousand you just passed -- never how far to the next
     App.tsx       the page
     components/
     __tests__/

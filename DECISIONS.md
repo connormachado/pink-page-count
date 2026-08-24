@@ -8,8 +8,8 @@ Project shape: single user, single machine, macOS, fully offline. No auth, no
 multi-user, no cloud, no database. **Durability of `data/entries.json` matters more
 than anything else in this project.**
 
-Status: Phase 2 of 4 — the API and the main page. `web/` holds a Vite + React +
-TypeScript front end built against section 9's tokens.
+Status: Phase 3a of 4 — quotes, animations, and milestones on the main page. `web/`
+holds a Vite + React + TypeScript front end built against section 9's tokens.
 
 ---
 
@@ -198,6 +198,7 @@ Base path `/api`. All request and response bodies are JSON.
 | `PATCH` | `/api/entries/{id}` | any of `page_start`, `page_end`, `note`, `read_at` | `200` + entry |
 | `DELETE` | `/api/entries/{id}` | — | `204` |
 | `GET` | `/api/stats` | — | `200` + stats |
+| `GET` | `/api/quote` | — | `200` + `{"quote": "..."}` |
 
 `GET /api/entries` returns **newest first**, sorted by `read_at` descending with
 `created_at` descending as the tiebreak.
@@ -273,6 +274,7 @@ page_end (12) must be greater than or equal to page_start (40)
 |---|---|---|
 | `PAGECOUNT_PORT` | `8420` | port to bind |
 | `PAGECOUNT_DATA_FILE` | `data/entries.json` | data file path |
+| `PAGECOUNT_QUOTES_FILE` | `quotes.txt` | quote file path (section 10) |
 
 ---
 
@@ -292,6 +294,7 @@ app/
   storage.py            atomic write, load, corruption halt, CRUD
   models.py             pydantic request/response models
   stats.py              pages_today, streaks, first_entry_date
+  quotes.py             quotes.txt -> today's quote. Imports no storage (10)
   main.py               FastAPI app, routes, error handlers
 tests/
 web/                    the front end (Phase 2). Vite + React + TypeScript,
@@ -300,6 +303,10 @@ web/                    the front end (Phase 2). Vite + React + TypeScript,
                         gitignored -- the built output is Phase 4's business.
   public/fonts/         Fraunces, vendored per 9.4
   src/tokens.css        section 9, and the only place a hex literal appears
+  src/milestones.ts     crossedMilestone(). Arrivals only, never distances (11)
+  src/useCountUp.ts     rAF count-up toward a server value (11)
+  src/motion.ts         prefers-reduced-motion + duration tokens
+quotes.txt              the quotes, one per line. Source, not entry data (10)
 data/
   entries.json          the data (gitignored)
 ```
@@ -317,13 +324,19 @@ minimum; `requirements-dev.txt` adds `pytest` and `httpx` (needed by FastAPI's
 **Phase 1: storage and API only.** No front-end code, HTML, CSS, or React. The JSON
 status route at `/` is a placeholder, not a UI.
 
-**Phase 2 (this one): the main page.** The number, the three chips, the motivational
+**Phase 2: the main page.** The number, the three chips, the motivational
 message (a hardcoded string until Phase 3), the two page inputs with their live preview,
 and the entry list with edit, delete, and backdating. Nothing in `app/` changed: the
 schema in section 1 and the boundary rule in 2.3 both held.
 
-Phases 3-4 add the stats page, the rotating quotes, export, the count-up, the pixel dog,
-and serving the built files from FastAPI.
+**Phase 3a (this one): quotes, animations, milestones.** The rotating daily quote
+(section 10), the count-up on save, the save confirmation, and the milestone
+celebrations (section 11), plus the empty state that shows an invitation instead of a
+numeral before the first entry. Nothing in `app/` changed except one added route:
+`quotes.py` is new, and no existing module was touched.
+
+Still ahead: the stats/graphs page, the export button, per-class tags, the pixel dog,
+and serving the built files from FastAPI (Phase 4).
 
 ### 7.1 The client never does arithmetic on a total
 
@@ -358,6 +371,10 @@ absent from the payload cannot be rendered next to `current_streak_days`, which 
 structural rather than a convention the UI layer is trusted to follow. Re-adding it is a
 deliberate decision to be made with §8 in view, not a default.
 
+Sections 10 and 11 are where this binds Phase 3a: a quote that could be read as a
+reprimand does not go in the file, and the distance to the next milestone is never
+computed.
+
 **This section binds Phases 2-4. Do not relax it without changing this file.**
 
 ---
@@ -389,6 +406,7 @@ intentional and is the enforcement mechanism.**
 |---|---|---|
 | `--dur-ui` | `180ms` | chips, hovers, focus states |
 | `--dur-count` | `900ms` | number count-up on save |
+| `--dur-confirm` | `2600ms` | how long the save confirmation stays before it fades |
 
 ### 9.3 Typography
 
@@ -407,3 +425,125 @@ Fonts link, no CDN, no external stylesheet anywhere in this project.**
 Same reason `/docs` was disabled in §5: **this app must render identically with the
 network cable pulled.** A webfont that arrives over the network is a webfont that does not
 arrive at all offline, and the layout it was measured against shifts underneath the user.
+
+---
+
+## 10. Quotes
+
+A quote at the top of the page, one per day, from a file she owns.
+
+### 10.1 `quotes.txt` is a separate file from entry data, and always will be
+
+Quotes live in `quotes.txt` at the repo root. **Nothing in the quote path may open,
+read, or write `data/entries.json`.** Editing quotes must be *structurally* incapable of
+touching the reading log — not careful about it, incapable of it.
+
+The enforcement is `app/quotes.py`'s import list. It imports `hashlib`, `pathlib`, and
+one function from `daytime`. It does not import `storage`, does not import `config`, and
+never names the data file, so there is no path through it that reaches an entry.
+`tests/test_quotes.py` parses the module and asserts that import list, and separately
+asserts `entries.json` is byte-identical after hammering the endpoint.
+
+This mirrors §3: the reading log is the thing this project protects. A feature about
+*text on a page* has no business being anywhere near it.
+
+Quotes are **source** and tracked in git; entries are **personal data** and gitignored.
+That difference is why they are two files.
+
+### 10.2 Format
+
+One quote per line, UTF-8. Blank lines and lines whose first non-space character is `#`
+are ignored, so the file can carry a comment header explaining itself. Lines are
+stripped. No escaping, no front matter, no JSON — she should be able to open it in
+TextEdit, type a sentence, and save.
+
+### 10.3 Selection is deterministic from the day key
+
+`index = sha256(day_key) % len(quotes)`. The same logical day always yields the same
+quote, so reloading the page never shuffles it.
+
+**sha256, not the builtin `hash()`.** Python randomizes string hashing per process
+(`PYTHONHASHSEED`), so `hash(day_key) % len` would silently hand her a different quote
+every time the server restarts. sha256 of the day key is stable across processes,
+machines, and years.
+
+The day key comes from `daytime.day_key` — the same 4am boundary as everything else,
+per §2.3. There is no second implementation of it here either.
+
+### 10.4 Read on request, and never an error
+
+`GET /api/quote` reads the file on **every request**, not once at startup, so editing
+`quotes.txt` shows up on the next page load with no restart.
+
+A missing, empty, unreadable, or comments-only file returns a hardcoded fallback string
+with a `200`. **Never an error, never an empty message area.** This is the one place in
+the project where a missing file is not a halt (§3.4) — because the failure mode of a
+missing quote is a blank line of text, not a lie about her data.
+
+### 10.5 §8 applies to the file's contents
+
+A quote that could be read as a reprimand does not go in the file. Nothing about
+discipline, grinding, catching up, falling behind, or what she should be doing. The
+shipped set is warm and undemanding; anything added later is held to the same bar.
+
+---
+
+## 11. Motion, the empty state, and milestones
+
+### 11.1 No animation library
+
+`requestAnimationFrame` and CSS, hand-rolled. No animation dependency, no confetti
+package, no remote asset — §5 and §9.4 apply to motion exactly as they apply to fonts.
+
+**Every animation is wrapped in `prefers-reduced-motion: no-preference`.** With reduced
+motion on, values change instantly and correctly and messages still appear; only the
+movement is dropped. Reduced motion is never a degraded experience, just a still one.
+
+**Any looping or idle animation stops on `visibilitychange` when the tab is hidden.**
+She reads on battery in a library.
+
+### 11.2 The count-up animates toward a server value; it never produces one
+
+After a successful save the primary number counts from the previously displayed value to
+the value `/api/stats` returned, easing out slightly past the target and settling back,
+over `--dur-count`. §7.1 is unchanged and unbent: the target is always a number the
+server sent, and the animation always ends on exactly that number, never on a rounded
+frame of it.
+
+Switching a chip changes the number instantly. Only a save counts up.
+
+The animating numeral is `aria-hidden`; a separate live region carries the final value,
+so a screen reader is told the result once rather than read every frame of it.
+
+### 11.3 The empty state shows an invitation, not a zero
+
+When `entry_count == 0` the numeral is not rendered at all — the invitation stands in
+its place, and the chips are hidden with it. The number appears on the first save.
+
+**The condition is `entry_count == 0`, never "the displayed value is zero."** A Today of
+0 at 7am is an ordinary morning and must still render `0`. A big pink `0` on a first run
+is not a stat, it is a verdict on someone who has not started yet (§8).
+
+### 11.4 Milestones: celebrate arrivals, never announce distances
+
+Thresholds are **100 and 500** for the early wins, then **every 1,000 pages all-time**,
+forever.
+
+Firing is **stateless**. A milestone fires only by comparing the `pages_all_time` from
+before a save to the value the server returned after it; if a threshold falls between
+them, celebrate. Nothing is persisted, so:
+
+- a page reload can never re-fire a celebration,
+- an edit or delete that drops the total back below a threshold fires nothing,
+- and only a **new entry** celebrates. An edit that happens to cross a threshold stays
+  quiet — a correction is not an arrival.
+
+`crossedMilestone(before, after)` returns `null` whenever `after <= before`, which is
+what makes the second and third of those true by construction rather than by a guard.
+
+**The distance to the next milestone is never computed.** No "40 pages to go", no
+progress bar, no countdown, no percentage. This is the specific trap in this feature —
+a progress bar toward a goal is a reprimand with a shape — so `web/src/milestones.ts`
+exports exactly one function and that function can only answer *did she just arrive*.
+There is nothing in the module capable of answering *how far*, and a test asserts its
+export list to keep it that way.

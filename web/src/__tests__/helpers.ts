@@ -20,12 +20,15 @@ export const ENTRY: Entry = {
   updated_at: "2026-08-24T21:12:03-04:00",
 };
 
+export const QUOTE = "A book met you where you were today, and that was enough.";
+
 type Route = { status?: number; body?: unknown };
 
 /** Stub fetch. No test in this file ever talks to a live backend. */
 export function stubFetch(routes: {
   stats?: Route;
   entries?: Route;
+  quote?: Route;
   post?: Route;
   patch?: Route;
   delete?: Route;
@@ -38,6 +41,7 @@ export function stubFetch(routes: {
     if (method === "POST") route = routes.post;
     else if (method === "PATCH") route = routes.patch;
     else if (method === "DELETE") route = routes.delete ?? { status: 204 };
+    else if (url.includes("/api/quote")) route = routes.quote ?? { body: { quote: QUOTE } };
     else if (url.includes("/api/stats")) route = routes.stats ?? { body: STATS };
     else if (url.includes("/api/entries")) route = routes.entries ?? { body: [] };
 
@@ -50,4 +54,31 @@ export function stubFetch(routes: {
 
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
+}
+
+
+/** Answer the prefers-reduced-motion query the way a test needs it.
+ *
+ * Every animation in the app is gated on this, so a test that asserts the
+ * reduced-motion behaviour has to be able to say so. Cleared by
+ * vi.unstubAllGlobals() in each file's afterEach. */
+export function setReducedMotion(reduced: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    (query: string) => ({
+      matches: reduced && query.includes("prefers-reduced-motion: reduce"),
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  );
+}
+
+/** A stats payload with the fields a test cares about, defaults for the rest. */
+export function statsWith(overrides: Partial<Stats>): Stats {
+  return { ...STATS, ...overrides };
 }

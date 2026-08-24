@@ -85,6 +85,17 @@ class StatsOut(BaseModel):
     first_entry_date: str | None
 
 
+class QuoteOut(BaseModel):
+    """The /api/quote payload. One string, and never anything from the entry log.
+
+    DECISIONS.md 10: the quote path and the reading log are separate by
+    construction. This model carries no entry data because the handler that
+    fills it has none.
+    """
+
+    quote: str
+
+
 def to_out(entry: dict[str, Any]) -> dict[str, Any]:
     """Serialize a stored entry for the API, recomputing `pages` on every read."""
     return {

@@ -30,6 +30,7 @@
   /* 9.2 Motion */
   --dur-ui: 180ms;
   --dur-count: 900ms;
+  --dur-confirm: 2600ms;
 
   /* 9.3 Typography */
   --font-ui:

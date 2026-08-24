@@ -1,30 +1,71 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ServerUnreachable, api } from "./api";
 import { BigNumber } from "./components/BigNumber";
+import { Celebration } from "./components/Celebration";
 import { Chips } from "./components/Chips";
+import { EmptyNumber } from "./components/EmptyNumber";
 import { EntryForm } from "./components/EntryForm";
 import { EntryList } from "./components/EntryList";
+import { SaveConfirmation } from "./components/SaveConfirmation";
+import { crossedMilestone } from "./milestones";
+import { FALLBACK_QUOTE, fetchQuote } from "./quote";
 import { selectStat, type StatKey } from "./stat";
 import type { Entry, Stats } from "./types";
 
-/** Phase 2 keeps this a constant. Phase 3 gives it somewhere to come from. */
-const MESSAGE = "Every page you read is one you didn't have before.";
+/** What a refresh was caused by. Only "save" -- a brand new entry -- may count
+ * up or celebrate. An edit or a delete refetches exactly the same way and shows
+ * nothing, which is how a delete that drops the total back under a threshold
+ * stays silent (DECISIONS.md 11). */
+type Cause = "load" | "save" | "change";
+
+const CONFIRMATIONS = ["Saved.", "Got it.", "Logged.", "Added."];
+
+/** How long the confirmation and the celebration stay before clearing. */
+const CONFIRM_MS = 2600;
+const CELEBRATE_MS = 5200;
 
 export default function App() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [unreachable, setUnreachable] = useState(false);
   const [selected, setSelected] = useState<StatKey>("all");
+  const [quote, setQuote] = useState(FALLBACK_QUOTE);
+  const [confirmation, setConfirmation] = useState<string | null>(null);
+  const [milestone, setMilestone] = useState<number | null>(null);
+
+  /** Bumped on a successful save. BigNumber counts up when it changes and
+   * lands instantly on every other kind of change. */
+  const [countToken, setCountToken] = useState(0);
+
+  /** The all-time total we last saw from the server, for the milestone
+   * comparison. A ref, seeded to null, and never persisted anywhere: that is
+   * what makes celebrating stateless. A page reload starts it at null again, so
+   * a reload cannot re-fire something that already happened. */
+  const previousAllTime = useRef<number | null>(null);
 
   /** The only way anything on this page changes.
    *
    * After every successful create, edit, or delete we refetch both endpoints
    * and render what comes back. No displayed total is ever adjusted by
    * arithmetic here, and no running count is kept in state -- the server is
-   * the only source of truth for a displayed number. */
-  const refresh = useCallback(async () => {
+   * the only source of truth for a displayed number. The count-up animates
+   * toward what arrives below; it never produces it. */
+  const refresh = useCallback(async (cause: Cause = "load") => {
     try {
       const [nextStats, nextEntries] = await Promise.all([api.stats(), api.entries()]);
+
+      if (cause === "save") {
+        const before = previousAllTime.current;
+        setCountToken((token) => token + 1);
+        setConfirmation(CONFIRMATIONS[Math.floor(Math.random() * CONFIRMATIONS.length)]);
+        // Compare the total from before this save to the one the server just
+        // returned. Both numbers came from the server; nothing is derived.
+        if (before !== null) {
+          setMilestone(crossedMilestone(before, nextStats.pages_all_time));
+        }
+      }
+
+      previousAllTime.current = nextStats.pages_all_time;
       setStats(nextStats);
       setEntries(nextEntries);
       setUnreachable(false);
@@ -35,8 +76,22 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    void refresh("load");
+    void fetchQuote().then(setQuote);
   }, [refresh]);
+
+  // Both of these clear themselves. Nothing on this page waits to be dismissed.
+  useEffect(() => {
+    if (confirmation === null) return;
+    const timer = window.setTimeout(() => setConfirmation(null), CONFIRM_MS);
+    return () => window.clearTimeout(timer);
+  }, [confirmation]);
+
+  useEffect(() => {
+    if (milestone === null) return;
+    const timer = window.setTimeout(() => setMilestone(null), CELEBRATE_MS);
+    return () => window.clearTimeout(timer);
+  }, [milestone]);
 
   // Nobody answered. Say so plainly and say how to fix it -- showing a zero
   // here would be a lie that looks like data.
@@ -51,7 +106,7 @@ export default function App() {
           </p>
           <button
             type="button"
-            onClick={() => void refresh()}
+            onClick={() => void refresh("load")}
             className="mt-4 rounded-full border border-[var(--pink-edge)] bg-[var(--pink-edge)]
                        px-5 py-2 text-[var(--ink)] transition-colors duration-[var(--dur-ui)]
                        cursor-pointer hover:bg-[var(--pink-surface)]"
@@ -73,19 +128,34 @@ export default function App() {
 
   const { value, label } = selectStat(stats, selected);
 
+  // Conditioned on entry_count, never on the displayed value. A Today of 0 at
+  // 7am is an ordinary morning and still renders a 0 (DECISIONS.md 11).
+  const nothingLoggedYet = stats.entry_count === 0;
+
   return (
     <Shell>
-      <p className="text-center text-[var(--rose-muted)]">{MESSAGE}</p>
+      <p className="text-center text-[var(--rose-muted)]">{quote}</p>
 
-      <BigNumber value={value} label={label} />
+      {nothingLoggedYet ? (
+        <EmptyNumber />
+      ) : (
+        <>
+          <BigNumber value={value} label={label} countToken={countToken} />
+          <Chips selected={selected} onSelect={setSelected} />
+        </>
+      )}
 
-      <Chips selected={selected} onSelect={setSelected} />
+      <SaveConfirmation message={confirmation} />
+      <Celebration milestone={milestone} />
 
-      <EntryForm onSaved={refresh} onUnreachable={() => setUnreachable(true)} />
+      <EntryForm
+        onSaved={() => refresh("save")}
+        onUnreachable={() => setUnreachable(true)}
+      />
 
       <EntryList
         entries={entries}
-        onChanged={refresh}
+        onChanged={() => refresh("change")}
         onUnreachable={() => setUnreachable(true)}
       />
     </Shell>

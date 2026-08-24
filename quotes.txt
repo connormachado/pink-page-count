@@ -1,0 +1,27 @@
+# One quote per line. Blank lines and lines starting with '#' are ignored.
+# Edit this file however you like -- add your own, delete the ones you don't
+# love. Save it and reload the page; the app picks it up with no restart.
+#
+# This file has nothing to do with your reading log. Nothing you do here can
+# touch data/entries.json.
+
+Every page you read is one you didn't have before.
+A book met you where you were today, and that was enough.
+Reading is just paying attention to something beautiful for a while.
+There is no wrong pace. There is only the next page.
+You are allowed to love a book slowly.
+A few pages on a tired day still count as reading.
+The story waits for you. It has all the time in the world.
+Whatever you read today, you read. That's the whole thing.
+Books are patient company.
+Some days you read a chapter. Some days you read a sentence twice.
+You keep coming back, and that is the good part.
+Reading a little is infinitely more than reading none.
+The page you're on is exactly the right page.
+No one is grading this.
+A quiet hour with a book is an hour well spent.
+You don't have to finish it to have gotten something from it.
+Curiosity counts as a reason.
+Pick it up whenever. It'll still be there.
+The best readers are just people who kept reading.
+Today's pages are yours. Nobody else gets to count them.
