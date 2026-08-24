@@ -321,10 +321,8 @@ No red or alarm states. No "behind pace." No projections of what she should have
 No broken-streak messaging. **If a stat can only be read as a reprimand, it is not
 built.**
 
-Specifically: `longest_streak_days` may be returned by `/api/stats`, but it must **never
-be rendered adjacent to, or in comparison with, `current_streak_days`.** A UI that shows
-"current 2 / longest 11" violates this section. The comparison is the reprimand — the
-number alone is not.
+A UI that shows "current 2 / longest 11" violates this section. The comparison is the
+reprimand — the number alone is not.
 
 "Structurally incapable" means the constraint is enforced by what exists, not by
 restraint at render time. The safest way to satisfy this section is to not compute or
