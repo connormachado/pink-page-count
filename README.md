@@ -85,7 +85,7 @@ file.
 late night still counts as the day it felt like.
 
 `GET /api/stats` returns `pages_today`, `pages_all_time`, `current_streak_days`,
-`longest_streak_days`, `entry_count`, and `first_entry_date`.
+`entry_count`, and `first_entry_date`.
 
 Errors come back as `{"error": "a human readable message"}`.
 

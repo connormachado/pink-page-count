@@ -55,9 +55,10 @@ def longest_streak(days_with_entries: set[date]) -> int:
 def compute_stats(entries: list[dict[str, Any]], now) -> dict[str, Any]:
     """Build the /api/stats payload.
 
-    NOTE (DECISIONS.md 8): `longest_streak_days` is returned here, but Phases 2-4 must
-    never render it adjacent to or in comparison with `current_streak_days`. The
-    comparison is the reprimand; the number alone is not.
+    NOTE (DECISIONS.md 8): `longest_streak_days` is computed here but is NOT part of the
+    API response -- StatsOut omits it, so FastAPI drops it on the way out. Keeping it out
+    of the payload is what makes the non-scolding rule structural instead of a convention
+    the UI is trusted to follow. Do not add it to StatsOut without re-reading section 8.
     """
     today = day_key(now)
     keys = _day_keys(entries)

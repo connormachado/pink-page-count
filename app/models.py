@@ -70,10 +70,17 @@ class EntryOut(BaseModel):
 
 
 class StatsOut(BaseModel):
+    """The /api/stats payload.
+
+    `longest_streak_days` is computed by app.stats but deliberately absent here, so the
+    API cannot hand a UI the material for a "current 2 / longest 11" comparison. See
+    DECISIONS.md 8 -- this omission is what makes that section structural. FastAPI drops
+    any field not declared on the response model.
+    """
+
     pages_today: int
     pages_all_time: int
     current_streak_days: int
-    longest_streak_days: int
     entry_count: int
     first_entry_date: str | None
 

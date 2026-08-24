@@ -208,7 +208,6 @@ Base path `/api`. All request and response bodies are JSON.
   "pages_today": 29,
   "pages_all_time": 412,
   "current_streak_days": 5,
-  "longest_streak_days": 11,
   "entry_count": 17,
   "first_entry_date": "2026-07-30"
 }
@@ -331,4 +330,56 @@ number alone is not.
 restraint at render time. The safest way to satisfy this section is to not compute or
 pass the offending comparison anywhere it could be displayed.
 
+`longest_streak_days` is computed but deliberately not returned by the API in v1. A field
+absent from the payload cannot be rendered next to `current_streak_days`, which makes §8
+structural rather than a convention the UI layer is trusted to follow. Re-adding it is a
+deliberate decision to be made with §8 in view, not a default.
+
 **This section binds Phases 2-4. Do not relax it without changing this file.**
+
+---
+
+## 9. Visual tokens
+
+Frozen starting values for Phase 2. **No CSS exists yet** — this section is the
+reference the stylesheet will be built from.
+
+### 9.1 Color
+
+| Token | Value | Used for |
+|---|---|---|
+| `--pink-hot` | `#FF2E88` | the big number, and nothing else |
+| `--pink-wash` | `#FFF5F8` | page background |
+| `--pink-surface` | `#FFE8F0` | cards |
+| `--pink-edge` | `#FFC2DA` | chips, rules, borders |
+| `--ink` | `#2B1A22` | all primary text |
+| `--rose-muted` | `#7A2E52` | secondary text (dates, "that's N pages") |
+
+**`--pink-hot` is reserved for the primary number. It is never used for body text,
+buttons, borders, or chips. At body size it fails contrast against `--pink-wash`; this is
+intentional and is the enforcement mechanism.**
+
+### 9.2 Motion
+
+| Token | Value | Used for |
+|---|---|---|
+| `--dur-ui` | `180ms` | chips, hovers, focus states |
+| `--dur-count` | `900ms` | number count-up on save |
+
+### 9.3 Typography
+
+| Token | Value | Used for |
+|---|---|---|
+| (system default) | system sans | all UI text |
+| `--font-number` | Fraunces | the primary numeral |
+
+System sans for UI. A serif face for the primary numeral.
+
+### 9.4 Fonts are vendored, never fetched
+
+**All font files are vendored into the repo and served locally via `@font-face`. No Google
+Fonts link, no CDN, no external stylesheet anywhere in this project.**
+
+Same reason `/docs` was disabled in §5: **this app must render identically with the
+network cable pulled.** A webfont that arrives over the network is a webfont that does not
+arrive at all offline, and the layout it was measured against shifts underneath the user.

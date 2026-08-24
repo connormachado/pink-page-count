@@ -99,9 +99,26 @@ def test_stats_endpoint_shape(client):
         "pages_today",
         "pages_all_time",
         "current_streak_days",
-        "longest_streak_days",
         "entry_count",
         "first_entry_date",
     }
     assert stats["entry_count"] == 1
     assert stats["current_streak_days"] == 1
+
+
+def test_longest_streak_is_not_in_the_api_response(client):
+    """DECISIONS.md 8: a field absent from the payload cannot be rendered next to
+    current_streak_days. The omission is the enforcement mechanism."""
+    for day in ("2026-08-10", "2026-08-11", "2026-08-12"):
+        client.post(
+            "/api/entries",
+            json={"page_start": 1, "page_end": 5, "read_at": f"{day}T12:00:00-04:00"},
+        )
+    assert "longest_streak_days" not in client.get("/api/stats").json()
+
+
+def test_longest_streak_is_still_computed_internally():
+    """Removed from the response, not from the codebase -- Phase 2+ may need it, and
+    re-adding it must be a deliberate decision rather than a re-derivation."""
+    days = ["2026-08-16", "2026-08-17", "2026-08-18", "2026-08-22"]
+    assert compute_stats([entry(day) for day in days], NOW)["longest_streak_days"] == 3
