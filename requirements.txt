@@ -1,0 +1,4 @@
+# Runtime dependencies only, so run.command installs the minimum.
+# Dev/test dependencies live in requirements-dev.txt.
+fastapi>=0.110
+uvicorn>=0.27
