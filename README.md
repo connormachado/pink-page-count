@@ -6,9 +6,11 @@ how the pages add up. Runs entirely on this Mac: no account, no cloud, no intern
 Your data lives in one plain JSON file — `data/entries.json` — that you can open and
 edit in any text editor.
 
-**Phase 1 of 4: this is the backend only.** There is no user interface yet. The server
-runs and answers API requests; the browser will show a small JSON status page. The
-interface comes in Phase 2.
+**Phase 2 of 4: the main page.** The backend is done and the main page is built — the
+number, the three chips, the page inputs with a live preview, and the log with edit and
+delete. The stats page, the rotating quotes, and the export button come in Phases 3
+and 4, and the built front end is not served by `run.command` yet: for now the two
+run side by side (see *Working on the front end* below).
 
 ---
 
@@ -47,6 +49,45 @@ PAGECOUNT_PORT=8421 ./run.command
 ```
 
 The server binds to `127.0.0.1` only. Nothing else on the network can reach it.
+
+---
+
+## Working on the front end
+
+The front end lives in `web/`. In development it runs on its own server and forwards
+every `/api` request to the Python server, so **both need to be running**.
+
+```bash
+# Terminal 1 -- the API
+./run.command
+
+# Terminal 2 -- the front end
+cd web
+npm install        # first time only
+npm run dev
+```
+
+`npm run dev` prints a URL (usually <http://localhost:5173/>). Open that one, not
+port 8420 — 8420 still answers with the JSON status page until Phase 4 serves the
+built files.
+
+If the front end says the tracker isn't running, terminal 1 is what's missing.
+
+### Front-end tests
+
+```bash
+cd web
+npm test
+```
+
+They stub the network, so they pass with no server running and never touch your log.
+
+### Nothing is fetched from the internet
+
+The Fraunces face used for the big number is committed to the repo at
+`web/public/fonts/` and loaded from there. There is no CDN link, no Google Fonts tag,
+and no external stylesheet or script anywhere in `web/` — pull the network cable and
+the page looks exactly the same.
 
 ---
 
@@ -176,6 +217,16 @@ app/
   models.py       request and response shapes, page-range validation
   stats.py        pages today, streaks
   main.py         the API routes
+web/
+  index.html
+  vite.config.ts  dev server, and the /api proxy to port 8420
+  public/fonts/   Fraunces, vendored -- never fetched
+  src/
+    tokens.css    every color, duration, and font, defined once
+    api.ts        the five API calls and the two kinds of failure
+    App.tsx       the page
+    components/
+    __tests__/
 tests/
 data/
   entries.json    your reading log

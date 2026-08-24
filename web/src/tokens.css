@@ -1,0 +1,39 @@
+/* The single source of every color, duration, and font in this app.
+ *
+ * These values are frozen in DECISIONS.md section 9. No hex literal appears
+ * anywhere else in the codebase -- components reference these custom
+ * properties and nothing but these custom properties.
+ *
+ * --pink-hot is used by exactly one element: the primary number. At body size
+ * it fails contrast against --pink-wash. That is intentional and it is the
+ * enforcement mechanism (DECISIONS.md 9.1).
+ */
+
+/* DECISIONS.md 9.4: vendored, served locally, never fetched. */
+@font-face {
+  font-family: "Fraunces";
+  src: url("/fonts/fraunces-latin-var.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: block;
+}
+
+:root {
+  /* 9.1 Color */
+  --pink-hot: #ff2e88;
+  --pink-wash: #fff5f8;
+  --pink-surface: #ffe8f0;
+  --pink-edge: #ffc2da;
+  --ink: #2b1a22;
+  --rose-muted: #7a2e52;
+
+  /* 9.2 Motion */
+  --dur-ui: 180ms;
+  --dur-count: 900ms;
+
+  /* 9.3 Typography */
+  --font-ui:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+  --font-number: "Fraunces", Georgia, "Times New Roman", serif;
+}

@@ -1,0 +1,30 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+/* Every value below comes from tokens.css. Nothing here invents a color. */
+html {
+  background-color: var(--pink-wash);
+}
+
+body {
+  background-color: var(--pink-wash);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* A visible focus ring on every keyboard-focused control. --rose-muted, not a
+ * danger color and not --pink-hot, which belongs to the number alone. */
+:focus-visible {
+  outline: 2px solid var(--rose-muted);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+}

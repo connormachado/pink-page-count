@@ -8,7 +8,8 @@ Project shape: single user, single machine, macOS, fully offline. No auth, no
 multi-user, no cloud, no database. **Durability of `data/entries.json` matters more
 than anything else in this project.**
 
-Status: Phase 1 of 4 — storage and API only. No front-end code exists yet.
+Status: Phase 2 of 4 — the API and the main page. `web/` holds a Vite + React +
+TypeScript front end built against section 9's tokens.
 
 ---
 
@@ -261,7 +262,9 @@ page_end (12) must be greater than or equal to page_start (40)
   that one person uses. The schema stays available as `/openapi.json`, which FastAPI
   generates locally and serves with no external requests.
 - `GET /` returns a small JSON status: app name, `schema_version`, and the list of API
-  routes. It links to nothing external. Phase 2 replaces the root route with the UI.
+  routes. It links to nothing external. **Phase 4** replaces the root route with the
+  built UI. Phase 2 runs the front end on Vite's own dev server instead, proxying `/api`
+  here, so nothing in `app/` had to change and no CORS middleware was needed.
 - `GET /api/health` returns `{"status": "ok"}` for the launcher's readiness poll.
 
 ### 5.1 Environment variables
@@ -291,6 +294,12 @@ app/
   stats.py              pages_today, streaks, first_entry_date
   main.py               FastAPI app, routes, error handlers
 tests/
+web/                    the front end (Phase 2). Vite + React + TypeScript,
+                        Tailwind v4; no component library, router, or state
+                        manager. `web/node_modules` and `web/dist` are
+                        gitignored -- the built output is Phase 4's business.
+  public/fonts/         Fraunces, vendored per 9.4
+  src/tokens.css        section 9, and the only place a hex literal appears
 data/
   entries.json          the data (gitignored)
 ```
@@ -305,11 +314,27 @@ minimum; `requirements-dev.txt` adds `pytest` and `httpx` (needed by FastAPI's
 
 ## 7. Phase boundaries
 
-**Phase 1 (this one): storage and API only.** No front-end code, HTML, CSS, or React.
-The JSON status route at `/` is a placeholder, not a UI.
+**Phase 1: storage and API only.** No front-end code, HTML, CSS, or React. The JSON
+status route at `/` is a placeholder, not a UI.
 
-Phases 2–4 build the interface on top of this API. They should not need to change the
-schema in section 1 or the boundary rule in section 2.3. If they do, update this file.
+**Phase 2 (this one): the main page.** The number, the three chips, the motivational
+message (a hardcoded string until Phase 3), the two page inputs with their live preview,
+and the entry list with edit, delete, and backdating. Nothing in `app/` changed: the
+schema in section 1 and the boundary rule in 2.3 both held.
+
+Phases 3-4 add the stats page, the rotating quotes, export, the count-up, the pixel dog,
+and serving the built files from FastAPI.
+
+### 7.1 The client never does arithmetic on a total
+
+The server is the only source of truth for every displayed number. After any successful
+create, edit, or delete the front end refetches `/api/stats` and `/api/entries` and
+renders what comes back; it never adjusts a displayed total itself and keeps no running
+count in component state.
+
+The one exception is the unsaved-input preview -- "that's 29 pages" under the page boxes
+-- which is `end - start + 1` on two numbers that have not been sent anywhere. It is
+display-only, and `pages` is still never sent to the server (1.1).
 
 ---
 
@@ -339,8 +364,9 @@ deliberate decision to be made with §8 in view, not a default.
 
 ## 9. Visual tokens
 
-Frozen starting values for Phase 2. **No CSS exists yet** — this section is the
-reference the stylesheet will be built from.
+Frozen starting values, implemented in Phase 2 as `web/src/tokens.css`. Every token
+below is a CSS custom property defined there and referenced everywhere else; **a hex
+literal appears in that file and nowhere else in the repo.**
 
 ### 9.1 Color
 
