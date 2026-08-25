@@ -68,6 +68,7 @@ describe("the empty state", () => {
       }
       if (url.includes("/api/quote")) return new Response(JSON.stringify({ quote: "hi" }));
       if (url.includes("/api/stats")) return new Response(JSON.stringify(statsBody));
+      if (url.includes("/api/classes")) return new Response(JSON.stringify([]));
       return new Response(JSON.stringify(statsBody === empty ? [] : [ENTRY]));
     });
     vi.stubGlobal("fetch", fetchMock);

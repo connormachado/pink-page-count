@@ -1,168 +1,65 @@
-"""Durable JSON storage. See DECISIONS.md section 3.
+"""The entry log: load, CRUD, write-through. See DECISIONS.md section 3.
 
-The whole point of this module: a crash mid-write must never produce a truncated or
-empty entries.json, and a file this code cannot interpret is never modified.
+The durable write path and the corrupt-file halt live in `app/jsonfile.py` and are
+shared with the class store -- there is one implementation of them, not one per file
+(DECISIONS.md 3.1). They are re-exported here because this module is where the rest
+of the project has always reached for them.
+
+This module knows nothing about classes beyond `class_id` being a string or null. It
+does not import the class store, and there is no path through it that opens
+classes.json (DECISIONS.md 1.3).
 """
 
 from __future__ import annotations
 
-import fcntl
-import json
-import os
 import sys
-import tempfile
 import threading
 import uuid
 from pathlib import Path
 from typing import Any
 
-from .config import SCHEMA_VERSION
+from .config import ENTRIES_SCHEMA_VERSION
 from .daytime import BadTimestamp, format_iso, now_local, parse_iso
+from .jsonfile import (
+    CorruptDataFile,
+    atomic_write_json,
+    envelope_list,
+    is_int,
+    read_json_document,
+    reject_duplicate_ids,
+)
 from .models import ValidationProblem, validate_page_range
 
+__all__ = [
+    "CorruptDataFile",
+    "ENTRY_FIELDS",
+    "Storage",
+    "atomic_write_json",
+    "load_storage_or_exit",
+]
+
+# Storage order, and therefore the key order written to disk.
 ENTRY_FIELDS = (
     "id",
     "page_start",
     "page_end",
     "read_at",
     "note",
+    "class_id",
     "created_at",
     "updated_at",
 )
 
+# DECISIONS.md 1.4: class_id is recognized but OPTIONAL on read. An entry written by
+# Phase 3 code has no such key and reads as None. Nothing is rewritten to add it --
+# that happens on the next ordinary mutation and at no other time.
+OPTIONAL_ENTRY_FIELDS = ("class_id",)
+REQUIRED_ENTRY_FIELDS = tuple(
+    field for field in ENTRY_FIELDS if field not in OPTIONAL_ENTRY_FIELDS
+)
 
-class CorruptDataFile(Exception):
-    """The data file cannot be safely interpreted. DECISIONS.md 3.4: halt, don't recover.
-
-    Carries enough detail to print a banner that tells the user what to open and where
-    to look. The file itself is never touched.
-    """
-
-    def __init__(
-        self,
-        path: Path,
-        reason: str,
-        *,
-        line: int | None = None,
-        column: int | None = None,
-        position: int | None = None,
-    ) -> None:
-        self.path = Path(path)
-        self.reason = reason
-        self.line = line
-        self.column = column
-        self.position = position
-        super().__init__(f"{self.path}: {reason}")
-
-    def location(self) -> str | None:
-        if self.line is not None and self.column is not None:
-            where = f"line {self.line}, column {self.column}"
-            if self.position is not None:
-                where += f" (character {self.position})"
-            return where
-        return None
-
-    def banner(self) -> str:
-        """The loud multi-line stderr message required by DECISIONS.md 3.4."""
-        rule = "!" * 72
-        lines = [
-            "",
-            rule,
-            "  READING TRACKER WILL NOT START: the data file cannot be read.",
-            rule,
-            "",
-            f"  File:  {self.path}",
-            f"  Problem: {self.reason}",
-        ]
-        where = self.location()
-        if where:
-            lines.append(f"  Where: {where}")
-        lines += [
-            "",
-            "  Your data has NOT been changed, moved, renamed, or overwritten.",
-            "  The file is exactly as it was. Nothing was lost.",
-            "",
-            "  This server refuses to start rather than show you an empty log that",
-            "  looks like the truth. Open the file above, fix it, and start again.",
-            "",
-            "  If you want to set it aside and start over, move it yourself:",
-            f"    mv '{self.path}' '{self.path.with_suffix('.json.bak')}'",
-            "",
-            rule,
-            "",
-        ]
-        return "\n".join(lines)
-
-
-# --------------------------------------------------------------------------- #
-# Atomic write (DECISIONS.md 3.1, 3.2)
-# --------------------------------------------------------------------------- #
-
-
-def _durable_sync(fd: int) -> None:
-    """Flush a file descriptor all the way to the physical device.
-
-    On macOS a plain os.fsync() returns once the data reaches the drive's write cache,
-    not once it is durably stored. Only F_FULLFSYNC guarantees survival of a power cut.
-    Falls back to os.fsync on volumes that reject it (non-APFS, network mounts).
-    """
-    full_fsync = getattr(fcntl, "F_FULLFSYNC", None)
-    if full_fsync is not None:
-        try:
-            fcntl.fcntl(fd, full_fsync)
-            return
-        except OSError:
-            pass
-    os.fsync(fd)
-
-
-def _sync_directory(directory: Path) -> None:
-    """fsync the directory so the rename itself survives a power cut."""
-    try:
-        dir_fd = os.open(directory, os.O_RDONLY)
-    except OSError:
-        return
-    try:
-        os.fsync(dir_fd)
-    except OSError:
-        pass
-    finally:
-        os.close(dir_fd)
-
-
-def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
-    """Write `payload` to `path` atomically and durably.
-
-    temp file in the same directory -> write -> flush -> F_FULLFSYNC -> close ->
-    os.replace -> fsync the directory. Readers see either the entire old file or the
-    entire new one, never a truncated one. On any failure the temp file is removed,
-    so a crashed write leaves no litter beside the real data file.
-    """
-    path = Path(path)
-    directory = path.parent
-    directory.mkdir(parents=True, exist_ok=True)
-
-    fd, tmp_name = tempfile.mkstemp(
-        dir=directory, prefix=f".{path.name}.", suffix=".tmp"
-    )
-    tmp_path = Path(tmp_name)
-    try:
-        # Serialize before writing anything, so a serialization error cannot leave a
-        # half-written temp file behind.
-        text = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(text)
-            handle.flush()
-            _durable_sync(handle.fileno())
-        os.replace(tmp_path, path)
-    except BaseException:
-        try:
-            os.close(fd)
-        except OSError:
-            pass
-        tmp_path.unlink(missing_ok=True)
-        raise
-    _sync_directory(directory)
+# The fields a PATCH may touch. `pages` is not among them and never will be (1.1).
+PATCHABLE_FIELDS = ("page_start", "page_end", "note", "read_at", "class_id")
 
 
 # --------------------------------------------------------------------------- #
@@ -170,17 +67,12 @@ def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def _is_int(value: Any) -> bool:
-    # bool is a subclass of int; `true` is not a page number.
-    return isinstance(value, int) and not isinstance(value, bool)
-
-
 def _validate_entry(raw: Any, index: int, path: Path) -> dict[str, Any]:
     where = f"entries[{index}]"
     if not isinstance(raw, dict):
         raise CorruptDataFile(path, f"{where} is not a JSON object")
 
-    missing = [field for field in ENTRY_FIELDS if field not in raw]
+    missing = [field for field in REQUIRED_ENTRY_FIELDS if field not in raw]
     if missing:
         raise CorruptDataFile(
             path, f"{where} is missing required field(s): {', '.join(missing)}"
@@ -198,7 +90,7 @@ def _validate_entry(raw: Any, index: int, path: Path) -> dict[str, Any]:
     if not isinstance(raw["id"], str) or not raw["id"].strip():
         raise CorruptDataFile(path, f"{where}.id must be a non-empty string")
     for field in ("page_start", "page_end"):
-        if not _is_int(raw[field]):
+        if not is_int(raw[field]):
             raise CorruptDataFile(
                 path, f"{where}.{field} must be a whole number, got {raw[field]!r}"
             )
@@ -210,53 +102,33 @@ def _validate_entry(raw: Any, index: int, path: Path) -> dict[str, Any]:
     if raw["note"] is not None and not isinstance(raw["note"], str):
         raise CorruptDataFile(path, f"{where}.note must be a string or null")
 
+    # A class_id that names a class not in classes.json is NOT corruption and does not
+    # stop the server (DECISIONS.md 1.3) -- only the shape is checked here. Nothing in
+    # this module can see classes.json to check anything else.
+    class_id = raw.get("class_id")
+    if class_id is not None:
+        if not isinstance(class_id, str):
+            raise CorruptDataFile(path, f"{where}.class_id must be a string or null")
+        if not class_id.strip():
+            raise CorruptDataFile(
+                path, f"{where}.class_id must be null rather than an empty string"
+            )
+
     for field in ("read_at", "created_at", "updated_at"):
         try:
             parse_iso(raw[field], field=field)
         except BadTimestamp as exc:
             raise CorruptDataFile(path, f"{where}: {exc}") from None
 
-    return {field: raw[field] for field in ENTRY_FIELDS}
+    return {field: raw.get(field) for field in ENTRY_FIELDS}
 
 
 def _validate_document(document: Any, path: Path) -> list[dict[str, Any]]:
-    if not isinstance(document, dict):
-        raise CorruptDataFile(
-            path, f"top level must be a JSON object, found {type(document).__name__}"
-        )
-
-    version = document.get("schema_version")
-    if version is None:
-        raise CorruptDataFile(path, "top level is missing 'schema_version'")
-    if not _is_int(version):
-        raise CorruptDataFile(
-            path, f"'schema_version' must be a whole number, got {version!r}"
-        )
-    if version > SCHEMA_VERSION:
-        # DECISIONS.md 1.2: newer-than-known is an error, not corruption -- but the
-        # response is the same halt, and the file is likewise never touched.
-        raise CorruptDataFile(
-            path,
-            f"file uses schema_version {version}, but this code understands only "
-            f"{SCHEMA_VERSION}. It was written by a newer version of this app.",
-        )
-
-    entries = document.get("entries")
-    if entries is None:
-        raise CorruptDataFile(path, "top level is missing 'entries'")
-    if not isinstance(entries, list):
-        raise CorruptDataFile(
-            path, f"'entries' must be a list, found {type(entries).__name__}"
-        )
-
-    validated = [_validate_entry(raw, i, path) for i, raw in enumerate(entries)]
-
-    seen: set[str] = set()
-    for entry in validated:
-        if entry["id"] in seen:
-            raise CorruptDataFile(path, f"duplicate entry id: {entry['id']}")
-        seen.add(entry["id"])
-
+    raw_entries = envelope_list(
+        document, path, list_key="entries", schema_version=ENTRIES_SCHEMA_VERSION
+    )
+    validated = [_validate_entry(raw, i, path) for i, raw in enumerate(raw_entries)]
+    reject_duplicate_ids(validated, path, label="entry")
     return validated
 
 
@@ -282,34 +154,19 @@ class Storage:
 
     def _load(self) -> None:
         if not self.path.exists():
-            # DECISIONS.md 3.3: missing file is not an error.
+            # DECISIONS.md 3.3: missing file is not an error. It is created at the
+            # current version -- a first write, not a migration.
             self._entries = []
             self.path.parent.mkdir(parents=True, exist_ok=True)
             atomic_write_json(self.path, self._document())
             return
 
-        try:
-            text = self.path.read_text(encoding="utf-8")
-        except OSError as exc:
-            raise CorruptDataFile(self.path, f"could not be read: {exc}") from None
-        except UnicodeDecodeError as exc:
-            raise CorruptDataFile(self.path, f"is not valid UTF-8 text: {exc}") from None
-
-        try:
-            document = json.loads(text)
-        except json.JSONDecodeError as exc:
-            raise CorruptDataFile(
-                self.path,
-                f"is not valid JSON: {exc.msg}",
-                line=exc.lineno,
-                column=exc.colno,
-                position=exc.pos,
-            ) from None
-
-        self._entries = _validate_document(document, self.path)
+        # DECISIONS.md 1.4: an older file is read into the current shape and left
+        # alone on disk. Loading never persists.
+        self._entries = _validate_document(read_json_document(self.path), self.path)
 
     def _document(self) -> dict[str, Any]:
-        return {"schema_version": SCHEMA_VERSION, "entries": self._entries}
+        return {"schema_version": ENTRIES_SCHEMA_VERSION, "entries": self._entries}
 
     def _persist(self) -> None:
         atomic_write_json(self.path, self._document())
@@ -349,6 +206,7 @@ class Storage:
         page_end: int,
         note: str | None = None,
         read_at: str | None = None,
+        class_id: str | None = None,
     ) -> dict[str, Any]:
         stamp = format_iso(now_local())
         entry = {
@@ -357,6 +215,7 @@ class Storage:
             "page_end": page_end,
             "read_at": read_at if read_at is not None else stamp,
             "note": note,
+            "class_id": class_id,
             "created_at": stamp,
             "updated_at": stamp,
         }
@@ -375,7 +234,7 @@ class Storage:
                 if entry["id"] != entry_id:
                     continue
                 updated = dict(entry)
-                for field in ("page_start", "page_end", "note", "read_at"):
+                for field in PATCHABLE_FIELDS:
                     if field in changes:
                         updated[field] = changes[field]
                 updated["updated_at"] = format_iso(now_local())
@@ -387,6 +246,39 @@ class Storage:
                     raise
                 return dict(updated)
         return None
+
+    def clear_class(self, class_id: str) -> int:
+        """Set class_id to null on every entry that carries it. Returns how many.
+
+        DECISIONS.md 12.3: this is what deleting a class does to entries, and it is
+        the ONLY thing it does to them. page_start, page_end, read_at, note, and
+        created_at are not touched. There is no code path here that removes an entry.
+
+        updated_at IS bumped, because section 1 defines it as bumped on every mutation
+        and this is one. That is a stated choice, not an oversight.
+        """
+        with self._lock:
+            stamp = format_iso(now_local())
+            previous = list(self._entries)
+            cleared = 0
+            for index, entry in enumerate(self._entries):
+                if entry.get("class_id") != class_id:
+                    continue
+                self._entries[index] = {
+                    **entry,
+                    "class_id": None,
+                    "updated_at": stamp,
+                }
+                cleared += 1
+
+            if cleared == 0:
+                return 0
+            try:
+                self._persist()
+            except BaseException:
+                self._entries[:] = previous  # keep memory consistent with disk
+                raise
+            return cleared
 
     def delete(self, entry_id: str) -> bool:
         with self._lock:

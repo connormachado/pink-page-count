@@ -1,5 +1,6 @@
 import { vi } from "vitest";
-import type { Entry, Stats } from "../types";
+import { CLASS_TOKENS } from "../palette";
+import type { Class, Entry, Stats } from "../types";
 
 export const STATS: Stats = {
   pages_today: 29,
@@ -16,9 +17,51 @@ export const ENTRY: Entry = {
   pages: 29,
   read_at: "2026-08-24T21:12:00-04:00",
   note: "chapter 4",
+  class_id: null,
   created_at: "2026-08-24T21:12:03-04:00",
   updated_at: "2026-08-24T21:12:03-04:00",
 };
+
+export const CLASS: Class = {
+  id: "b81d0e4a-2c9f-4a13-8f77-1e5c9d3a2b60",
+  title: "Bio 12",
+  description: null,
+  color: "#E4557F",
+  archived: false,
+  created_at: "2026-08-25T09:04:11-04:00",
+  updated_at: "2026-08-25T09:04:11-04:00",
+};
+
+/** An entry with the fields a test cares about, defaults for the rest. */
+export function entryWith(overrides: Partial<Entry>): Entry {
+  return { ...ENTRY, ...overrides };
+}
+
+/** A class with the fields a test cares about. `id` defaults from the title so
+ * two calls do not collide. */
+export function classWith(overrides: Partial<Class>): Class {
+  return { ...CLASS, id: overrides.title ?? CLASS.id, ...overrides };
+}
+
+/** Define the --class-* tokens on the document.
+ *
+ * vitest runs with css: false, so tokens.css is never loaded and the palette
+ * resolves empty. These are placeholder values on purpose: the real ones live
+ * in tokens.css and nowhere else (DECISIONS.md 12.2), and what these tests
+ * assert is the *choosing*, not the colors. */
+export function installPalette(): string[] {
+  const colors = CLASS_TOKENS.map((_, i) => `#00000${i}`);
+  CLASS_TOKENS.forEach((token, i) => {
+    document.documentElement.style.setProperty(token, colors[i]);
+  });
+  return colors;
+}
+
+export function removePalette() {
+  CLASS_TOKENS.forEach((token) => {
+    document.documentElement.style.removeProperty(token);
+  });
+}
 
 export const QUOTE = "A book met you where you were today, and that was enough.";
 
@@ -29,20 +72,29 @@ export function stubFetch(routes: {
   stats?: Route;
   entries?: Route;
   quote?: Route;
+  classes?: Route;
   post?: Route;
   patch?: Route;
   delete?: Route;
+  classPost?: Route;
+  classPatch?: Route;
+  classDelete?: Route;
 }) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = (init?.method ?? "GET").toUpperCase();
+    const isClass = url.includes("/api/classes");
 
     let route: Route | undefined;
-    if (method === "POST") route = routes.post;
-    else if (method === "PATCH") route = routes.patch;
-    else if (method === "DELETE") route = routes.delete ?? { status: 204 };
+    if (method === "POST")
+      route = isClass ? (routes.classPost ?? { status: 201, body: CLASS }) : routes.post;
+    else if (method === "PATCH")
+      route = isClass ? (routes.classPatch ?? { body: CLASS }) : routes.patch;
+    else if (method === "DELETE")
+      route = (isClass ? routes.classDelete : routes.delete) ?? { status: 204 };
     else if (url.includes("/api/quote")) route = routes.quote ?? { body: { quote: QUOTE } };
     else if (url.includes("/api/stats")) route = routes.stats ?? { body: STATS };
+    else if (isClass) route = routes.classes ?? { body: [] };
     else if (url.includes("/api/entries")) route = routes.entries ?? { body: [] };
 
     const status = route?.status ?? 200;

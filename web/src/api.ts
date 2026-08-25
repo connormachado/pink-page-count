@@ -1,4 +1,12 @@
-import type { Entry, EntryCreate, EntryPatch, Stats } from "./types";
+import type {
+  Class,
+  ClassCreate,
+  ClassPatch,
+  Entry,
+  EntryCreate,
+  EntryPatch,
+  Stats,
+} from "./types";
 
 /** The server said no, and told us why in {"error": "..."} (DECISIONS.md 4.2).
  * The message is written for a person; show it verbatim. */
@@ -58,4 +66,13 @@ export const api = {
   update: (id: string, changes: EntryPatch) =>
     request<Entry>(`/api/entries/${id}`, { method: "PATCH", body: JSON.stringify(changes) }),
   remove: (id: string) => request<void>(`/api/entries/${id}`, { method: "DELETE" }),
+
+  classes: () => request<Class[]>("/api/classes"),
+  createClass: (body: ClassCreate) =>
+    request<Class>("/api/classes", { method: "POST", body: JSON.stringify(body) }),
+  updateClass: (id: string, changes: ClassPatch) =>
+    request<Class>(`/api/classes/${id}`, { method: "PATCH", body: JSON.stringify(changes) }),
+  // Deletes the class only. Every entry logged under it is kept, with its
+  // class_id cleared by the server (DECISIONS.md 12.3).
+  removeClass: (id: string) => request<void>(`/api/classes/${id}`, { method: "DELETE" }),
 };

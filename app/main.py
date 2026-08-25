@@ -16,8 +16,12 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import config
+from .classes import ClassStore, load_class_store_or_exit
 from .daytime import BadTimestamp, day_key, format_iso, now_local, parse_iso
 from .models import (
+    ClassCreate,
+    ClassOut,
+    ClassUpdate,
     EntryCreate,
     EntryOut,
     EntryUpdate,
@@ -40,6 +44,10 @@ API_ROUTES = [
     "GET    /api/entries",
     "PATCH  /api/entries/{id}",
     "DELETE /api/entries/{id}",
+    "GET    /api/classes",
+    "POST   /api/classes",
+    "PATCH  /api/classes/{id}",
+    "DELETE /api/classes/{id}",
     "GET    /api/stats",
     "GET    /api/quote",
 ]
@@ -74,9 +82,21 @@ def _normalize_read_at(value: str | None) -> str | None:
         raise ValidationProblem(str(exc)) from None
 
 
-def create_app(storage: Storage, quotes: QuoteSource | None = None) -> FastAPI:
-    # The quote source is injectable for the same reason storage is (DECISIONS.md
-    # 3.7): no test ever reads the real quotes.txt.
+def create_app(
+    storage: Storage,
+    quotes: QuoteSource | None = None,
+    *,
+    classes: ClassStore,
+) -> FastAPI:
+    """Build the app around injected stores (DECISIONS.md 3.7).
+
+    `classes` is REQUIRED and has no default, unlike `quotes`. A default would mean
+    `create_app(storage)` silently opens -- and, if it is missing, WRITES -- the real
+    data/classes.json (3.3). quotes.txt is only ever read, so a default there cannot
+    damage anything; a class store defaulted into existence would put a test one
+    forgotten argument away from touching real data. Requiring it makes "no test ever
+    touches the real data file" structural rather than a habit.
+    """
     quotes = quotes or QuoteSource(config.quotes_file())
     app = FastAPI(
         title="Reading Tracker",
@@ -103,6 +123,20 @@ def create_app(storage: Storage, quotes: QuoteSource | None = None) -> FastAPI:
     async def _handle_http_exception(_request, exc: StarletteHTTPException):
         return _error(str(exc.detail), exc.status_code)
 
+    # -- helpers that need the stores ------------------------------------ #
+
+    def check_class_id(value: str | None) -> str | None:
+        """A class_id on an entry must name a class that exists, or be null.
+
+        Shared by entry create and patch. The message names the id, per
+        DECISIONS.md 4.1 -- a client that sent a stale id needs to see which one.
+        """
+        if value is None:
+            return None
+        if classes.get(value) is None:
+            raise ValidationProblem(f"No class with id {value}")
+        return value
+
     # -- routes --------------------------------------------------------- #
 
     @app.get("/")
@@ -112,8 +146,12 @@ def create_app(storage: Storage, quotes: QuoteSource | None = None) -> FastAPI:
         return {
             "app": "Reading Tracker",
             "status": "ok",
-            "schema_version": config.SCHEMA_VERSION,
+            "schema_version": {
+                "entries": config.ENTRIES_SCHEMA_VERSION,
+                "classes": config.CLASSES_SCHEMA_VERSION,
+            },
             "data_file": str(storage.path),
+            "classes_file": str(classes.path),
             "api": API_ROUTES,
         }
 
@@ -133,6 +171,7 @@ def create_app(storage: Storage, quotes: QuoteSource | None = None) -> FastAPI:
             page_end=payload.page_end,
             note=payload.note,
             read_at=_normalize_read_at(payload.read_at),
+            class_id=check_class_id(payload.class_id),
         )
         return to_out(entry)
 
@@ -152,6 +191,8 @@ def create_app(storage: Storage, quotes: QuoteSource | None = None) -> FastAPI:
             )
 
         changes = payload.provided()
+        if "class_id" in changes:
+            check_class_id(changes["class_id"])
         if "read_at" in changes:
             changes["read_at"] = _normalize_read_at(changes["read_at"])
             if changes["read_at"] is None:
@@ -179,6 +220,67 @@ def create_app(storage: Storage, quotes: QuoteSource | None = None) -> FastAPI:
             )
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+    @app.get("/api/classes", response_model=list[ClassOut])
+    async def list_classes() -> list[dict[str, Any]]:
+        """Non-archived first, then archived (DECISIONS.md 4).
+
+        Archived classes are still returned: the picker hides them, but the entry list
+        needs their name and color for entries that already carry them (12.4).
+        """
+        return classes.list()
+
+    @app.post(
+        "/api/classes",
+        response_model=ClassOut,
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def create_class(payload: ClassCreate) -> dict[str, Any]:
+        return classes.create(
+            title=payload.title,
+            description=payload.description,
+            color=payload.color,
+        )
+
+    @app.patch("/api/classes/{class_id}", response_model=ClassOut)
+    async def update_class(class_id: str, payload: ClassUpdate) -> dict[str, Any]:
+        changes = payload.provided()
+        # `description: null` clears the description. The other three are not
+        # nullable -- a class always has a name, a color, and an archived flag.
+        for field in ("title", "color", "archived"):
+            if field in changes and changes[field] is None:
+                raise ValidationProblem(f"{field} cannot be null")
+
+        updated = classes.update(class_id, changes)
+        if updated is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No class with id {class_id}",
+            )
+        return updated
+
+    @app.delete("/api/classes/{class_id}", status_code=status.HTTP_204_NO_CONTENT)
+    async def delete_class(class_id: str) -> Response:
+        """Delete a class. NEVER deletes an entry (DECISIONS.md 12.3).
+
+        Entries that referenced it keep their page range, date, note, and created_at;
+        only class_id is cleared.
+
+        The order of the two writes is fixed by DECISIONS.md 3.8 and is not
+        arbitrary: entries first, then the class. If the second write fails, the
+        result is entries with no class and a class still listed -- harmless, visible,
+        and fixed by pressing delete again. The reverse order would leave entries
+        pointing at a class that no longer exists.
+        """
+        if classes.get(class_id) is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No class with id {class_id}",
+            )
+
+        storage.clear_class(class_id)
+        classes.delete(class_id)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
     @app.get("/api/stats", response_model=StatsOut)
     async def read_stats() -> dict[str, Any]:
         return compute_stats(storage.all(), now_local())
@@ -202,16 +304,20 @@ def create_app(storage: Storage, quotes: QuoteSource | None = None) -> FastAPI:
 
 
 def create_default_app() -> FastAPI:
-    """uvicorn factory: open the real data file, or print the banner and halt."""
-    return create_app(load_storage_or_exit(config.data_file()))
+    """uvicorn factory: open the real data files, or print the banner and halt."""
+    return create_app(
+        load_storage_or_exit(config.data_file()),
+        classes=load_class_store_or_exit(config.classes_file()),
+    )
 
 
 def main() -> None:
     import uvicorn
 
-    # Resolve (and validate) the data file before uvicorn starts, so a corrupt file
+    # Resolve (and validate) both data files before uvicorn starts, so a corrupt file
     # halts with our banner instead of a traceback buried in server startup logs.
     load_storage_or_exit(config.data_file())
+    load_class_store_or_exit(config.classes_file())
     uvicorn.run(
         "app.main:create_default_app",
         factory=True,

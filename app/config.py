@@ -5,7 +5,15 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+# DECISIONS.md 1.2: each data file carries its own version, and each is bumped only
+# when that file's on-disk shape changes incompatibly. entries.json went to 2 when
+# class_id was added (1.4).
+ENTRIES_SCHEMA_VERSION = 2
+CLASSES_SCHEMA_VERSION = 1
+
+# The entry log is the file this project exists to protect, so its version is the one
+# an unqualified SCHEMA_VERSION means.
+SCHEMA_VERSION = ENTRIES_SCHEMA_VERSION
 
 # DECISIONS.md 5: binds to loopback only, never 0.0.0.0. Hard-coded, not configurable.
 HOST = "127.0.0.1"
@@ -13,10 +21,13 @@ DEFAULT_PORT = 8420
 
 PORT_ENV = "PAGECOUNT_PORT"
 DATA_FILE_ENV = "PAGECOUNT_DATA_FILE"
+CLASSES_FILE_ENV = "PAGECOUNT_CLASSES_FILE"
 QUOTES_FILE_ENV = "PAGECOUNT_QUOTES_FILE"
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DATA_FILE = REPO_ROOT / "data" / "entries.json"
+# DECISIONS.md 12.1: classes live beside the entry log, never inside it.
+DEFAULT_CLASSES_FILE = REPO_ROOT / "data" / "classes.json"
 # DECISIONS.md 10: quotes are source, not entry data, and live in their own file
 # at the repo root where she can open them in any text editor.
 DEFAULT_QUOTES_FILE = REPO_ROOT / "quotes.txt"
@@ -26,6 +37,15 @@ def data_file() -> Path:
     """Path to the JSON data file, overridable for tests via PAGECOUNT_DATA_FILE."""
     override = os.environ.get(DATA_FILE_ENV)
     return Path(override).expanduser() if override else DEFAULT_DATA_FILE
+
+
+def classes_file() -> Path:
+    """Path to the class file, overridable for tests via PAGECOUNT_CLASSES_FILE.
+
+    A separate file from data_file() and always will be -- see DECISIONS.md 12.1.
+    """
+    override = os.environ.get(CLASSES_FILE_ENV)
+    return Path(override).expanduser() if override else DEFAULT_CLASSES_FILE
 
 
 def quotes_file() -> Path:

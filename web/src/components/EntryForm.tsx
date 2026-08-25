@@ -1,12 +1,19 @@
 import { useState } from "react";
 import { ApiError, ServerUnreachable, api } from "../api";
+import { defaultClassId } from "../classes";
 import { parsePage, previewLine } from "../pages";
+import type { Class, Entry } from "../types";
+import { ClassPicker } from "./ClassPicker";
 import { Field, buttonClasses, inputClasses } from "./Field";
 
 type Props = {
   /** Refetch stats and entries. The form never touches a displayed total itself. */
   onSaved: () => Promise<void>;
   onUnreachable: () => void;
+  classes: Class[];
+  /** Newest first, straight from the server. Only used to pick the default
+   * class -- no total is ever derived from it (DECISIONS.md 7.1). */
+  entries: Entry[];
 };
 
 type Errors = { start?: string; end?: string; form?: string };
@@ -19,12 +26,21 @@ export function placeMessage(message: string): keyof Errors {
   return "form";
 }
 
-export function EntryForm({ onSaved, onUnreachable }: Props) {
+export function EntryForm({ onSaved, onUnreachable, classes, entries }: Props) {
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [note, setNote] = useState("");
   const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState(false);
+
+  /** undefined means "she hasn't touched the picker", so the default below stays
+   * live as entries arrive. A background refresh can therefore never clobber a
+   * choice she made, and after a save this resets so the next default is derived
+   * from fresh server data. */
+  const [chosenClass, setChosenClass] = useState<string | null | undefined>(undefined);
+  const selectedClass = chosenClass === undefined
+    ? defaultClassId(entries, classes)
+    : chosenClass;
 
   const preview = previewLine(start, end);
 
@@ -50,10 +66,14 @@ export function EntryForm({ onSaved, onUnreachable }: Props) {
         page_start: pageStart as number,
         page_end: pageEnd as number,
         note: note.trim() === "" ? null : note.trim(),
+        // Optional, and never checked above: nothing about the class can stop
+        // a save (DECISIONS.md 12.4).
+        class_id: selectedClass,
       });
       setStart("");
       setEnd("");
       setNote("");
+      setChosenClass(undefined);
       await onSaved();
     } catch (error) {
       if (error instanceof ServerUnreachable) onUnreachable();
@@ -114,6 +134,17 @@ export function EntryForm({ onSaved, onUnreachable }: Props) {
           </button>
         </div>
       </div>
+
+      {classes.length > 0 ? (
+        <div className="mt-3">
+          <ClassPicker
+            classes={classes}
+            value={selectedClass}
+            onChange={setChosenClass}
+            idPrefix="new-entry"
+          />
+        </div>
+      ) : null}
 
       {/* A preview of an unsaved input: end - start + 1, display only, never
           sent. Every saved number on this page comes from the server. */}

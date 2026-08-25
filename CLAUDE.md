@@ -8,7 +8,9 @@ wrong, stop and say so — do not work around it.
 ## Rules
 
 - Phased build, 4 phases. Do not build ahead of the current phase.
-- Do not modify app/ during front-end work. The backend is done.
+- Do not change the schema, storage semantics, or existing endpoints in app/
+  without saying so in DECISIONS.md in the same commit. Adding new routes and
+  new modules is expected.
 - Never send or store a `pages` field. It is computed on read. Always.
 - The server is the only source of truth for displayed numbers. No client-side
   arithmetic on totals.

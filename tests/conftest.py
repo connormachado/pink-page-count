@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app.classes import ClassStore  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.quotes import QuoteSource  # noqa: E402
 from app.storage import Storage  # noqa: E402
@@ -45,6 +46,16 @@ def storage(data_file: Path) -> Storage:
 
 
 @pytest.fixture
+def classes_file(tmp_path: Path) -> Path:
+    return tmp_path / "data" / "classes.json"
+
+
+@pytest.fixture
+def class_store(classes_file: Path) -> ClassStore:
+    return ClassStore(classes_file)
+
+
+@pytest.fixture
 def quotes_file(tmp_path: Path) -> Path:
     """A quote file under tmp_path. Deliberately NOT created -- a test that wants
     content writes it. No test ever reads the repo's real quotes.txt."""
@@ -52,8 +63,12 @@ def quotes_file(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def client(storage: Storage, quotes_file: Path) -> TestClient:
-    return TestClient(create_app(storage, QuoteSource(quotes_file)))
+def client(
+    storage: Storage, quotes_file: Path, class_store: ClassStore
+) -> TestClient:
+    return TestClient(
+        create_app(storage, QuoteSource(quotes_file), classes=class_store)
+    )
 
 
 def local(text: str) -> datetime:

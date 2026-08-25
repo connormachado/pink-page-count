@@ -27,6 +27,24 @@
   --ink: #2b1a22;
   --rose-muted: #7a2e52;
 
+  /* 12.2 Class swatches. Pink-forward, and eight of them.
+   *
+   * --pink-hot is deliberately NOT among these: it belongs to the primary
+   * number alone (9.1). Each of these is legible as a small dot on
+   * --pink-surface at body size.
+   *
+   * The server has no palette. ClassManager reads these tokens by name at
+   * runtime and sends the resolved value, so the values live here and nowhere
+   * else -- section 9 holds with no carve-out. */
+  --class-rose: #e4557f;
+  --class-berry: #b03a6b;
+  --class-plum: #8e4a7d;
+  --class-lilac: #9a6fc0;
+  --class-coral: #e2705a;
+  --class-peach: #d9884a;
+  --class-moss: #5e8c6a;
+  --class-sky: #4f7ea8;
+
   /* 9.2 Motion */
   --dur-ui: 180ms;
   --dur-count: 900ms;

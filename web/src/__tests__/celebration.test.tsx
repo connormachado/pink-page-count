@@ -33,6 +33,7 @@ function stubBackend(before: Stats, after: Stats) {
     }
     if (url.includes("/api/quote")) return new Response(JSON.stringify({ quote: "hi" }));
     if (url.includes("/api/stats")) return new Response(JSON.stringify(current));
+    if (url.includes("/api/classes")) return new Response(JSON.stringify([]));
     return new Response(JSON.stringify([ENTRY]));
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -68,7 +69,12 @@ describe("milestone celebrations", () => {
 
     await saveAnEntry(user);
 
-    await waitFor(() => expect(screen.getByTestId("big-number").textContent).toBe("1005"));
+    // The count-up runs for --dur-count (900ms), which leaves almost nothing in
+    // waitFor's default 1s budget. Wait on the settled value explicitly.
+    await waitFor(
+      () => expect(screen.getByTestId("big-number").textContent).toBe("1005"),
+      { timeout: 3000 },
+    );
     expect(screen.queryByTestId("milestone")).not.toBeInTheDocument();
   });
 
@@ -89,7 +95,10 @@ describe("milestone celebrations", () => {
     await user.click(screen.getByRole("button", { name: /^Delete pages/ }));
     await user.click(screen.getByRole("button", { name: "Yes, remove" }));
 
-    await waitFor(() => expect(screen.getByTestId("big-number").textContent).toBe("998"));
+    await waitFor(
+      () => expect(screen.getByTestId("big-number").textContent).toBe("998"),
+      { timeout: 3000 },
+    );
     expect(screen.queryByTestId("milestone")).not.toBeInTheDocument();
   });
 
@@ -106,7 +115,10 @@ describe("milestone celebrations", () => {
     await user.type(row.getByLabelText("End page"), "171");
     await user.click(row.getByRole("button", { name: "Save changes" }));
 
-    await waitFor(() => expect(screen.getByTestId("big-number").textContent).toBe("1002"));
+    await waitFor(
+      () => expect(screen.getByTestId("big-number").textContent).toBe("1002"),
+      { timeout: 3000 },
+    );
     expect(screen.queryByTestId("milestone")).not.toBeInTheDocument();
   });
 

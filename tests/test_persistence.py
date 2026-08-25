@@ -30,17 +30,21 @@ def test_entries_survive_a_restart(data_file):
     assert survivors == created
 
 
-def test_restart_through_the_api_keeps_the_entries(data_file):
+def test_restart_through_the_api_keeps_the_entries(data_file, classes_file):
     """Write through one app, throw it away, and read through a fresh one."""
     from fastapi.testclient import TestClient
 
+    from app.classes import ClassStore
     from app.main import create_app
 
-    with TestClient(create_app(Storage(data_file))) as first:
+    def app():
+        return create_app(Storage(data_file), classes=ClassStore(classes_file))
+
+    with TestClient(app()) as first:
         first.post("/api/entries", json={"page_start": 43, "page_end": 71})
         first.post("/api/entries", json={"page_start": 100, "page_end": 100})
 
-    with TestClient(create_app(Storage(data_file))) as second:
+    with TestClient(app()) as second:
         entries = second.get("/api/entries").json()
 
     assert len(entries) == 2
@@ -52,7 +56,7 @@ def test_missing_file_is_created_empty(data_file):
     storage = Storage(data_file)
     assert storage.all() == []
     document = json.loads(data_file.read_text(encoding="utf-8"))
-    assert document == {"schema_version": 1, "entries": []}
+    assert document == {"schema_version": 2, "entries": []}
 
 
 def test_file_is_pretty_printed_and_hand_editable(data_file):
@@ -61,7 +65,7 @@ def test_file_is_pretty_printed_and_hand_editable(data_file):
     text = data_file.read_text(encoding="utf-8")
     assert "\n  " in text  # indented, not one long line
     assert text.endswith("\n")
-    assert json.loads(text)["schema_version"] == 1
+    assert json.loads(text)["schema_version"] == 2
 
 
 def test_a_hand_edit_is_picked_up_on_restart(data_file):

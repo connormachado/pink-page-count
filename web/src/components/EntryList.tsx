@@ -1,15 +1,16 @@
-import type { Entry } from "../types";
+import type { Class, Entry } from "../types";
 import { EntryRow } from "./EntryRow";
 
 type Props = {
   entries: Entry[];
+  classes: Class[];
   onChanged: () => Promise<void>;
   onUnreachable: () => void;
 };
 
 /** Newest first, exactly as GET /api/entries returns it. The client does not
  * re-sort: DECISIONS.md 4 makes ordering the server's job. */
-export function EntryList({ entries, onChanged, onUnreachable }: Props) {
+export function EntryList({ entries, classes, onChanged, onUnreachable }: Props) {
   if (entries.length === 0) {
     return (
       <div className="rounded-2xl border border-[var(--pink-edge)] bg-[var(--pink-surface)] p-6 text-center">
@@ -22,11 +23,12 @@ export function EntryList({ entries, onChanged, onUnreachable }: Props) {
   }
 
   return (
-    <ul className="flex flex-col gap-3">
+    <ul aria-label="Reading log" className="flex flex-col gap-3">
       {entries.map((entry) => (
         <EntryRow
           key={entry.id}
           entry={entry}
+          classes={classes}
           onChanged={onChanged}
           onUnreachable={onUnreachable}
         />

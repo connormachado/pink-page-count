@@ -1,13 +1,17 @@
 import { useState } from "react";
 import { ApiError, ServerUnreachable, api } from "../api";
+import { findClass } from "../classes";
 import { formatReadAt, moveToDate, toDateInput } from "../dates";
 import { parsePage, plural, previewLine } from "../pages";
-import type { Entry, EntryPatch } from "../types";
+import type { Class, Entry, EntryPatch } from "../types";
+import { ClassDot } from "./ClassDot";
+import { ClassPicker } from "./ClassPicker";
 import { placeMessage } from "./EntryForm";
 import { Field, buttonClasses, inputClasses, quietButtonClasses } from "./Field";
 
 type Props = {
   entry: Entry;
+  classes: Class[];
   onChanged: () => Promise<void>;
   onUnreachable: () => void;
 };
@@ -18,14 +22,19 @@ type Errors = { start?: string; end?: string; form?: string };
 const rowClasses =
   "rounded-2xl border border-[var(--pink-edge)] bg-[var(--pink-surface)] p-4";
 
-export function EntryRow({ entry, onChanged, onUnreachable }: Props) {
+export function EntryRow({ entry, classes, onChanged, onUnreachable }: Props) {
   const [mode, setMode] = useState<Mode>("view");
   const [start, setStart] = useState(String(entry.page_start));
   const [end, setEnd] = useState(String(entry.page_end));
   const [note, setNote] = useState(entry.note ?? "");
   const [readDate, setReadDate] = useState(toDateInput(entry.read_at));
+  const [classId, setClassId] = useState<string | null>(entry.class_id);
   const [errors, setErrors] = useState<Errors>({});
   const [busy, setBusy] = useState(false);
+
+  /** undefined when the id names a class that no longer exists. That is not an
+   * error -- the row simply shows no class (DECISIONS.md 1.3). */
+  const subject = findClass(classes, entry.class_id);
 
   function startEditing() {
     // Prefill from the entry every time, so an abandoned edit leaves nothing behind.
@@ -33,6 +42,7 @@ export function EntryRow({ entry, onChanged, onUnreachable }: Props) {
     setEnd(String(entry.page_end));
     setNote(entry.note ?? "");
     setReadDate(toDateInput(entry.read_at));
+    setClassId(entry.class_id);
     setErrors({});
     setMode("edit");
   }
@@ -66,6 +76,7 @@ export function EntryRow({ entry, onChanged, onUnreachable }: Props) {
     if (readDate && readDate !== toDateInput(entry.read_at)) {
       changes.read_at = moveToDate(entry.read_at, readDate);
     }
+    if (classId !== entry.class_id) changes.class_id = classId;
 
     if (Object.keys(changes).length === 0) {
       setMode("view");
@@ -141,6 +152,19 @@ export function EntryRow({ entry, onChanged, onUnreachable }: Props) {
             </Field>
           </div>
 
+          {classes.length > 0 ? (
+            <div className="mt-3">
+              {/* Passing the entry's own class keeps an archived one visible
+                  here, so an edit can never silently strip it (12.4). */}
+              <ClassPicker
+                classes={classes}
+                value={classId}
+                onChange={setClassId}
+                idPrefix={`entry-${entry.id}`}
+              />
+            </div>
+          ) : null}
+
           <p className="mt-3 h-5 text-sm text-[var(--rose-muted)]" aria-live="polite">
             {preview}
           </p>
@@ -172,9 +196,18 @@ export function EntryRow({ entry, onChanged, onUnreachable }: Props) {
             Pages {entry.page_start}–{entry.page_end}{" "}
             <span className="text-[var(--rose-muted)]">· {plural(entry.pages, "page")}</span>
           </p>
-          <p className="mt-1 text-sm text-[var(--rose-muted)]">
-            {formatReadAt(entry.read_at)}
-            {entry.note ? ` · ${entry.note}` : ""}
+          <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-[var(--rose-muted)]">
+            {subject ? (
+              <>
+                {/* The dot is decorative; the name beside it is what carries
+                    the meaning, so color is never the only signal. */}
+                <ClassDot subject={subject} />
+                <span>{subject.title}</span>
+                <span aria-hidden="true">·</span>
+              </>
+            ) : null}
+            <span>{formatReadAt(entry.read_at)}</span>
+            {entry.note ? <span>· {entry.note}</span> : null}
           </p>
         </div>
 

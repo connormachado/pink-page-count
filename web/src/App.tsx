@@ -5,12 +5,13 @@ import { Celebration } from "./components/Celebration";
 import { Chips } from "./components/Chips";
 import { EmptyNumber } from "./components/EmptyNumber";
 import { EntryForm } from "./components/EntryForm";
+import { ClassManager } from "./components/ClassManager";
 import { EntryList } from "./components/EntryList";
 import { SaveConfirmation } from "./components/SaveConfirmation";
 import { crossedMilestone } from "./milestones";
 import { FALLBACK_QUOTE, fetchQuote } from "./quote";
 import { selectStat, type StatKey } from "./stat";
-import type { Entry, Stats } from "./types";
+import type { Class, Entry, Stats } from "./types";
 
 /** What a refresh was caused by. Only "save" -- a brand new entry -- may count
  * up or celebrate. An edit or a delete refetches exactly the same way and shows
@@ -27,6 +28,7 @@ const CELEBRATE_MS = 5200;
 export default function App() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [entries, setEntries] = useState<Entry[] | null>(null);
+  const [classes, setClasses] = useState<Class[] | null>(null);
   const [unreachable, setUnreachable] = useState(false);
   const [selected, setSelected] = useState<StatKey>("all");
   const [quote, setQuote] = useState(FALLBACK_QUOTE);
@@ -52,7 +54,11 @@ export default function App() {
    * toward what arrives below; it never produces it. */
   const refresh = useCallback(async (cause: Cause = "load") => {
     try {
-      const [nextStats, nextEntries] = await Promise.all([api.stats(), api.entries()]);
+      const [nextStats, nextEntries, nextClasses] = await Promise.all([
+        api.stats(),
+        api.entries(),
+        api.classes(),
+      ]);
 
       if (cause === "save") {
         const before = previousAllTime.current;
@@ -68,6 +74,7 @@ export default function App() {
       previousAllTime.current = nextStats.pages_all_time;
       setStats(nextStats);
       setEntries(nextEntries);
+      setClasses(nextClasses);
       setUnreachable(false);
     } catch (error) {
       if (error instanceof ServerUnreachable) setUnreachable(true);
@@ -118,7 +125,7 @@ export default function App() {
     );
   }
 
-  if (stats === null || entries === null) {
+  if (stats === null || entries === null || classes === null) {
     return (
       <Shell>
         <p className="text-center text-sm text-[var(--rose-muted)]">Loading…</p>
@@ -151,10 +158,22 @@ export default function App() {
       <EntryForm
         onSaved={() => refresh("save")}
         onUnreachable={() => setUnreachable(true)}
+        classes={classes}
+        entries={entries}
       />
 
       <EntryList
         entries={entries}
+        classes={classes}
+        onChanged={() => refresh("change")}
+        onUnreachable={() => setUnreachable(true)}
+      />
+
+      {/* Out of the way, below everything, and closed by default. A class
+          change is an ordinary "change" refresh: it never counts up and never
+          celebrates (DECISIONS.md 11.2, 12.4). */}
+      <ClassManager
+        classes={classes}
         onChanged={() => refresh("change")}
         onUnreachable={() => setUnreachable(true)}
       />

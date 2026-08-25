@@ -31,7 +31,14 @@ describe("preview arithmetic (inclusive, DECISIONS.md 1.1)", () => {
 describe("the live preview line", () => {
   async function type(start: string, end: string) {
     const user = userEvent.setup();
-    render(<EntryForm onSaved={async () => {}} onUnreachable={() => {}} />);
+    render(
+      <EntryForm
+        onSaved={async () => {}}
+        onUnreachable={() => {}}
+        classes={[]}
+        entries={[]}
+      />,
+    );
     if (start) await user.type(screen.getByLabelText("Start page"), start);
     if (end) await user.type(screen.getByLabelText("End page"), end);
     return user;
