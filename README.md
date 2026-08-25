@@ -6,18 +6,16 @@ how the pages add up. Runs entirely on this Mac: no account, no cloud, no intern
 Your data lives in one plain JSON file — `data/entries.json` — that you can open and
 edit in any text editor.
 
-**Phase 3a of 4: quotes, animations, and milestones.** The backend is done and the main
-page is built — the number, the three chips, the page inputs with a live preview, the log
-with edit and delete, a quote that changes once a day, a count-up when you save, and a
-small celebration every thousand pages. The stats page and the export button come next,
-and the built front end is not served by `run.command` yet: for now the two run side by
-side (see *Working on the front end* below).
+**Phase 4 of 4: deployment.** The app is complete and self-contained: double-click
+`run.command`, no terminal, no Node, works with wifi off. FastAPI now serves the built
+front end directly — there is no separate dev server to run alongside it any more,
+and no port but 8420 involved.
 
 ---
 
 ## Running it
 
-Double-click **`run.command`**.
+Double-click **`run.command`** (or a Desktop alias of it — see *Deployment* below).
 
 The first run takes a minute: it builds a Python environment and downloads the two
 packages the server needs (this one step needs the internet; nothing afterward does).
@@ -25,6 +23,9 @@ Later runs start immediately and quietly.
 
 The tracker opens at **http://127.0.0.1:8420/**. To stop it, close the window or press
 **Control-C**.
+
+Double-clicking `run.command` (or its Desktop alias) while the tracker is already
+running just opens a new browser tab to it — it will not try to start a second server.
 
 You can put an alias of `run.command` on the Desktop and double-click that instead —
 it resolves its own location, so it works from anywhere.
@@ -55,6 +56,9 @@ The server binds to `127.0.0.1` only. Nothing else on the network can reach it.
 
 ## Working on the front end
 
+Day to day, you don't need any of this — `run.command` already serves the built UI.
+This section is only for making changes to `web/src`.
+
 The front end lives in `web/`. In development it runs on its own server and forwards
 every `/api` request to the Python server, so **both need to be running**.
 
@@ -69,10 +73,17 @@ npm run dev
 ```
 
 `npm run dev` prints a URL (usually <http://localhost:5173/>). Open that one, not
-port 8420 — 8420 still answers with the JSON status page until Phase 4 serves the
-built files.
+port 8420 — 8420 serves whatever was last built into `web/dist`, not your unbuilt
+changes.
 
 If the front end says the tracker isn't running, terminal 1 is what's missing.
+
+Once you're happy with a change, rebuild and commit the result:
+
+```bash
+cd web
+npm run build       # writes web/dist, which is committed and served by run.command
+```
 
 ### Front-end tests
 
@@ -121,6 +132,7 @@ file.
 | `DELETE` | `/api/entries/{id}` | — |
 | `GET` | `/api/stats` | — |
 | `GET` | `/api/quote` | — |
+| `GET` | `/api/export` | — downloads a backup of everything, see below |
 
 **Page counting is inclusive.** Pages 43–71 is 29 pages. Pages 43–43 is 1 page.
 
@@ -173,7 +185,11 @@ with an empty one. Fix the file and start again; your data will still be there.
 **Every change is saved immediately.** There is no "save" step and nothing held in memory
 waiting to be written.
 
-Back it up by copying `data/entries.json` anywhere you like.
+Back it up by copying `data/entries.json` and `data/classes.json` anywhere you like, or
+click **Download a backup** at the bottom of the page — it downloads one JSON file with
+everything in it. There's no matching "restore" button; if you ever need it back,
+stop the tracker and copy the entries/classes back out of the downloaded file into
+`data/entries.json` and `data/classes.json` by hand.
 
 ---
 
@@ -223,26 +239,77 @@ cp /tmp/entries.backup.json data/entries.json
 
 ---
 
+## Deployment
+
+Setting this up fresh on a Mac, in order:
+
+1. **Prerequisites.** macOS with Python 3.11+ (`xcode-select --install` gets you one)
+   and, only for building the front end, [Node.js](https://nodejs.org/).
+2. **Clone the repo** somewhere permanent — `~/Desktop/pink-page-count` is what these
+   docs assume, but anywhere works.
+3. **Build the front end once:**
+   ```bash
+   cd web && npm install && npm run build
+   ```
+4. **Make the launchers executable** (git preserves the executable bit on most clones,
+   but if double-clicking does nothing, run this once):
+   ```bash
+   chmod +x run.command update.command
+   ```
+5. **First launch:** double-click `run.command`. macOS Gatekeeper will likely refuse
+   the first time since the script isn't signed — right-click (or Control-click)
+   `run.command`, choose **Open**, and confirm in the dialog that appears. After that,
+   plain double-clicks work.
+6. **Put it on the Desktop:** select `run.command` in Finder, ⌘L to make an alias
+   (or Option-⌘-drag it to the Desktop), and rename the alias to whatever you like.
+   It resolves its own real location, so the alias works from anywhere.
+7. **Apply the pink icon:** select `run.command` (or its Desktop alias) in Finder,
+   press ⌘I to open **Get Info**, then drag `AppIcon.icns` onto the small icon in the
+   top-left corner of that panel. This can't be scripted reliably, so it's a one-time
+   manual step.
+
+### Updating
+
+Double-click **`update.command`**. It pulls the latest code and reports what changed.
+It refuses outright — and changes nothing — if you have any uncommitted edits in the
+folder. It never starts or stops the server; run `run.command` yourself afterward.
+
+### Rolling back
+
+If you ever check out an older commit by hand: `data/entries.json` is at
+`schema_version` 2 (§1.2 in `DECISIONS.md`), and any code from before the classes
+phase only understands version 1. §1.2's refuse-to-start rule means that older code
+will halt rather than touch a version-2 file — it won't corrupt anything, but it also
+won't run. Rolling back past the classes commit isn't supported for that reason;
+stay on `update.command`'s forward-only pulls instead.
+
+---
+
 ## Where things are
 
 ```
 DECISIONS.md      the schema and every design decision -- read this first
 README.md         this file
 run.command       the launcher
+update.command    pulls new code; never touches a dirty tree or the server
+AppIcon.icns      the Desktop launcher's icon
 requirements.txt  what the server needs to run
+scripts/
+  make_icon.py    regenerates AppIcon.icns from the pink tokens
 app/
   config.py       paths, port, environment variables
   daytime.py      timestamps and the 4am day boundary
   storage.py      atomic writes and loading -- the durability code
+  classes.py      classes.json: load, CRUD, write-through
   models.py       request and response shapes, page-range validation
   stats.py        pages today, streaks
   quotes.py       picks the day's quote. Cannot reach your reading log
-  main.py         the API routes
+  main.py         the API routes, and the built UI at "/"
 quotes.txt        the quotes. Yours to edit -- see below
 web/
-  index.html
   vite.config.ts  dev server, and the /api proxy to port 8420
   public/fonts/   Fraunces, vendored -- never fetched
+  dist/           the built front end -- committed, and what run.command serves
   src/
     tokens.css    every color, duration, and font, defined once
     api.ts        the API calls and the two kinds of failure
@@ -253,6 +320,7 @@ web/
 tests/
 data/
   entries.json    your reading log
+  classes.json    your classes
 ```
 
 **`DECISIONS.md` is the reference.** It records the data schema and the reasoning behind

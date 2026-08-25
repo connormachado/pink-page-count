@@ -8,10 +8,12 @@ Project shape: single user, single machine, macOS, fully offline. No auth, no
 multi-user, no cloud, no database. **Durability of `data/entries.json` matters more
 than anything else in this project.**
 
-Status: Phase 3.5 of 4 — classes. An entry can carry an optional class for grouping
-and color; `data/classes.json` is a second file beside the entry log, and
-`data/entries.json` is at schema_version 2. `web/` holds a Vite + React + TypeScript
-front end built against section 9's tokens.
+Status: Phase 4 of 4 — deployment. FastAPI now serves the built `web/dist` directly
+at `/`, so `run.command` is the only thing to double-click; there is no more
+two-server dance. An entry can carry an optional class for grouping and color;
+`data/classes.json` is a second file beside the entry log, and `data/entries.json`
+is at schema_version 2. `web/` holds a Vite + React + TypeScript front end built
+against section 9's tokens.
 
 ---
 
@@ -273,6 +275,7 @@ Base path `/api`. All request and response bodies are JSON.
 | `DELETE` | `/api/classes/{id}` | — | `204` |
 | `GET` | `/api/stats` | — | `200` + stats |
 | `GET` | `/api/quote` | — | `200` + `{"quote": "..."}` |
+| `GET` | `/api/export` | — | `200` + `{"entries": [...], "classes": [...]}`, as a download |
 
 `GET /api/entries` returns **newest first**, sorted by `read_at` descending with
 `created_at` descending as the tiebreak. The front end relies on this: the class picker's
@@ -350,6 +353,24 @@ This one has a second reason: a per-class breakdown is exactly where this app wo
 a scoreboard, so its absence is a §8 decision to be made deliberately with a real design
 in front of us, not a gap to fill in passing. See 12.5.
 
+### 4.4 Export is a backup, not a feature
+
+`GET /api/export` returns exactly what the live endpoints would return for "give me
+everything" — `storage.list()` through the same `to_out()` transform `GET /api/entries`
+uses, plus `classes.list()`, the same list `GET /api/classes` returns. There is no
+separate export-shaping code to drift from the real payload.
+
+The response carries `Content-Disposition: attachment; filename="reading-log-
+YYYY-MM-DD.json"`, using the calendar date `now_local().date()` — a file timestamp,
+not the 4am-shifted day-key §2.3 uses for streaks.
+
+**There is no import or restore endpoint.** Restoring means hand-copying the
+downloaded file back over `data/entries.json` and `data/classes.json` with the server
+stopped. Building an import path would mean re-deriving the atomic-write and
+corrupt-file rules of §3 for a second entry point into the same files; the front door
+those files already have is enough, and this is a backup mechanism, not a feature to
+grow.
+
 ---
 
 ## 5. Server
@@ -364,12 +385,25 @@ in front of us, not a gap to fill in passing. See 12.5.
   it means vendoring ~1MB of third-party JS into the repo to document a small API that
   one person uses. The schema stays available as `/openapi.json`, which FastAPI
   generates locally and serves with no external requests.
-- `GET /` returns a small JSON status: app name, the schema version of each data file,
-  and the list of API routes. It links to nothing external. **Phase 4** replaces the
-  root route with the built UI. Phase 2 runs the front end on Vite's own dev server
-  instead, proxying `/api` here, so nothing in `app/` had to change and no CORS
-  middleware was needed.
-- `GET /api/health` returns `{"status": "ok"}` for the launcher's readiness poll.
+- `GET /` serves the built UI: `web/dist/index.html`, read off disk on every request
+  and sent with `Cache-Control: no-store` so a rebuilt file is never served stale from
+  the browser. If `web/dist` hasn't been built yet, it serves a small self-contained
+  "not built yet" page instead — a `200`, never a `500` or a JSON body, since a missing
+  build is a setup step, not a server error. The Phase 1-3 JSON status placeholder is
+  gone; this is what §5 always said would replace it.
+- `GET /assets/*` and `GET /fonts/*` are two narrow `StaticFiles` mounts onto
+  `web/dist/assets` and `web/dist/fonts`. Each is added only if its directory exists,
+  so a missing `web/dist` never crashes startup. Both prefixes are disjoint from `/api`,
+  so there is no shadowing risk by construction — and every `/api/*` route, `/api/health`
+  included, is still declared before this static section as a second line of defense.
+  There is still no SPA catch-all for unknown paths: §6 and §12.4 mean `/` is the only
+  meaningful HTML route, so an unknown path keeps producing the ordinary `{"error": "Not
+  Found"}` 404.
+- The dev-mode Vite proxy (`web/vite.config.ts`) is unchanged: running `npm run dev`
+  still forwards `/api` to this server on its own port, for front-end work without a
+  rebuild.
+- `GET /api/health` returns `{"status": "ok"}` for the launcher's readiness poll, and
+  now also for `run.command`'s pre-flight "is it already running" check (5.2).
 
 ### 5.1 Environment variables
 
@@ -379,6 +413,20 @@ in front of us, not a gap to fill in passing. See 12.5.
 | `PAGECOUNT_DATA_FILE` | `data/entries.json` | entry data file path |
 | `PAGECOUNT_CLASSES_FILE` | `data/classes.json` | class data file path (section 12) |
 | `PAGECOUNT_QUOTES_FILE` | `quotes.txt` | quote file path (section 10) |
+| `PAGECOUNT_DIST_DIR` | `web/dist` | built front end path (section 5) |
+
+### 5.2 `run.command` and `update.command`
+
+`run.command` polls `/api/health` **before** touching Python or the virtualenv. If
+something answers, it opens the browser and exits — a second double-click while the
+tracker is already running must not attempt a second server on the same port.
+
+`update.command` is a separate script that only pulls new code: `git status` must be
+clean or it refuses outright, then `git pull --ff-only` so a failure (diverged history,
+no network) is atomic and leaves the tree untouched rather than landing a conflict. It
+reinstalls Python dependencies if `requirements.txt` was among the pulled changes, and
+it never starts or stops the server — `run.command` remains the only thing that runs
+uvicorn, so a bad pulled commit can't break an already-working launch.
 
 ---
 
@@ -392,6 +440,14 @@ README.md
 requirements.txt        runtime only: fastapi, uvicorn
 requirements-dev.txt    pytest, httpx
 run.command             double-clickable launcher
+update.command          pulls new code; never touches a dirty tree, never
+                        starts or stops the server (Phase 4, 5.2)
+AppIcon.icns            the Desktop launcher's icon, applied by hand via
+                        Finder -> Get Info (Phase 4)
+scripts/
+  make_icon.py          regenerates AppIcon.icns from the --pink-hot /
+                        --pink-surface tokens. stdlib only (struct + zlib);
+                        no new dependency
 app/
   config.py             paths, port, env var names
   daytime.py            day_key() + ISO parse/format
@@ -406,8 +462,9 @@ app/
 tests/
 web/                    the front end (Phase 2). Vite + React + TypeScript,
                         Tailwind v4; no component library, router, or state
-                        manager. `web/node_modules` and `web/dist` are
-                        gitignored -- the built output is Phase 4's business.
+                        manager. `web/dist` is committed as of Phase 4 --
+                        FastAPI serves it directly (5). `web/node_modules`
+                        stays gitignored.
   public/fonts/         Fraunces, vendored per 9.4
   src/tokens.css        section 9, and the only place a hex literal appears --
                         including the eight --class-* swatches (12.2)
@@ -456,8 +513,16 @@ new, and the atomic write path was factored into `app/jsonfile.py` so both files
 one implementation (3.1). No existing endpoint changed shape; entry create and patch
 gained one optional field.
 
-Still ahead: the stats/graphs page, the export button, the pixel dog, and serving the
-built files from FastAPI (Phase 4).
+**Phase 4 (this one): deployment.** FastAPI serves the built `web/dist` directly at `/`,
+with two narrow static mounts for `/assets` and `/fonts` and a friendly page if the
+front end hasn't been built yet -- so `run.command` is the only thing left to
+double-click, with no dev server and no second port. Added a backup/export button
+(`GET /api/export`, 4.4), a pre-flight "already running" check in `run.command`,
+`update.command` for pulling new code without ever touching a dirty tree or starting
+the server, and `AppIcon.icns` for the Desktop launcher. `app/` gained one route and
+one config path; no existing schema, storage semantics, or endpoint shape changed.
+
+Still ahead: the stats/graphs page and the pixel dog.
 
 ### 7.1 The client never does arithmetic on a total
 

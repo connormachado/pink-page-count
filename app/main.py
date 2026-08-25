@@ -8,11 +8,13 @@ temporary data file without ever touching the real one (DECISIONS.md 3.7).
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Response, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import config
@@ -39,18 +41,24 @@ from .storage import Storage, load_storage_or_exit
 # both old and new versions without a deprecation warning.
 UNPROCESSABLE = 422
 
-API_ROUTES = [
-    "POST   /api/entries",
-    "GET    /api/entries",
-    "PATCH  /api/entries/{id}",
-    "DELETE /api/entries/{id}",
-    "GET    /api/classes",
-    "POST   /api/classes",
-    "PATCH  /api/classes/{id}",
-    "DELETE /api/classes/{id}",
-    "GET    /api/stats",
-    "GET    /api/quote",
-]
+# Shown at "/" when web/dist hasn't been built yet. Self-contained -- it cannot
+# depend on the very assets that are missing -- and a 200, not a 500 or a
+# JSON body: a missing build is a setup step, not a server error.
+_NOT_BUILT_HTML = """<!doctype html>
+<html><head><meta charset="utf-8"><title>Reading Tracker</title>
+<style>
+  body { background: #fff5f8; color: #2b1a22; font: 16px system-ui, sans-serif;
+         display: flex; align-items: center; justify-content: center;
+         min-height: 100vh; margin: 0; }
+  main { max-width: 32rem; padding: 2rem; text-align: center; }
+  code { background: #ffe8f0; border-radius: 4px; padding: 0.15rem 0.4rem; }
+</style></head>
+<body><main>
+  <p>The front end hasn't been built yet.</p>
+  <p>From the repo root, run:</p>
+  <p><code>cd web &amp;&amp; npm install &amp;&amp; npm run build</code></p>
+  <p>Then reload this page.</p>
+</main></body></html>"""
 
 
 def _error(message: str, status_code: int) -> JSONResponse:
@@ -87,6 +95,7 @@ def create_app(
     quotes: QuoteSource | None = None,
     *,
     classes: ClassStore,
+    dist_dir: Path | None = None,
 ) -> FastAPI:
     """Build the app around injected stores (DECISIONS.md 3.7).
 
@@ -98,6 +107,7 @@ def create_app(
     touches the real data file" structural rather than a habit.
     """
     quotes = quotes or QuoteSource(config.quotes_file())
+    dist_dir = dist_dir or config.dist_dir()
     app = FastAPI(
         title="Reading Tracker",
         version="1.0.0",
@@ -137,23 +147,12 @@ def create_app(
             raise ValidationProblem(f"No class with id {value}")
         return value
 
-    # -- routes --------------------------------------------------------- #
-
-    @app.get("/")
-    async def root() -> dict[str, Any]:
-        """A local status page in JSON. Links to nothing external; Phase 2 replaces
-        this route with the UI."""
-        return {
-            "app": "Reading Tracker",
-            "status": "ok",
-            "schema_version": {
-                "entries": config.ENTRIES_SCHEMA_VERSION,
-                "classes": config.CLASSES_SCHEMA_VERSION,
-            },
-            "data_file": str(storage.path),
-            "classes_file": str(classes.path),
-            "api": API_ROUTES,
-        }
+    # -- routes ----------------------------------------------------------- #
+    # Every /api/* route, including /api/health, is declared before the static
+    # section at the bottom of this function. The two StaticFiles mounts live at
+    # disjoint prefixes (/assets, /fonts) so there is no shadowing risk by
+    # construction, but this ordering is the belt to that mount design's
+    # suspenders.
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:
@@ -299,6 +298,53 @@ def create_app(
         string with a 200, never an error.
         """
         return {"quote": quotes.for_day(day_key(now_local()))}
+
+    @app.get("/api/export")
+    async def export() -> JSONResponse:
+        """A backup, not a feature: the same data the live endpoints already
+        serve, bundled into one file to download. There is no matching import
+        route -- restoring means hand-copying the file back over data/*.json.
+        """
+        payload = {
+            "entries": [to_out(entry) for entry in storage.list()],
+            "classes": classes.list(),
+        }
+        filename = f"reading-log-{now_local().date().isoformat()}.json"
+        return JSONResponse(
+            content=payload,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    # -- static: the built front end -------------------------------------- #
+    # Two narrow mounts rather than one StaticFiles(html=True) mount at "/" --
+    # a mount at "/" would match every path, including /api/*, before routing
+    # ever got a chance to prefer the more specific route. /assets and /fonts
+    # are disjoint prefixes from /api, so there is nothing to shadow.
+    #
+    # Each mount is added only if its directory exists: StaticFiles raises at
+    # construction time otherwise, and a missing web/dist must never crash
+    # startup (the front end may simply not be built yet).
+    if (dist_dir / "assets").is_dir():
+        app.mount("/assets", StaticFiles(directory=dist_dir / "assets"), name="assets")
+    if (dist_dir / "fonts").is_dir():
+        app.mount("/fonts", StaticFiles(directory=dist_dir / "fonts"), name="fonts")
+
+    @app.get("/", response_class=HTMLResponse)
+    async def root() -> HTMLResponse:
+        """Serve the built UI (DECISIONS.md 5). Phase 1-3 status/placeholder is
+        gone -- this is what it was always meant to become.
+
+        Read off disk per request rather than cached: this is a single-user app,
+        the file is small, and Cache-Control: no-store means a rebuilt index.html
+        is never served stale from the browser either.
+        """
+        index = dist_dir / "index.html"
+        if not index.is_file():
+            return HTMLResponse(_NOT_BUILT_HTML)
+        return HTMLResponse(
+            index.read_text(encoding="utf-8"),
+            headers={"Cache-Control": "no-store"},
+        )
 
     return app
 

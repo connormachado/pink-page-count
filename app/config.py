@@ -23,6 +23,7 @@ PORT_ENV = "PAGECOUNT_PORT"
 DATA_FILE_ENV = "PAGECOUNT_DATA_FILE"
 CLASSES_FILE_ENV = "PAGECOUNT_CLASSES_FILE"
 QUOTES_FILE_ENV = "PAGECOUNT_QUOTES_FILE"
+DIST_DIR_ENV = "PAGECOUNT_DIST_DIR"
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DATA_FILE = REPO_ROOT / "data" / "entries.json"
@@ -31,6 +32,8 @@ DEFAULT_CLASSES_FILE = REPO_ROOT / "data" / "classes.json"
 # DECISIONS.md 10: quotes are source, not entry data, and live in their own file
 # at the repo root where she can open them in any text editor.
 DEFAULT_QUOTES_FILE = REPO_ROOT / "quotes.txt"
+# DECISIONS.md 5: Phase 4 serves the built front end straight off disk.
+DEFAULT_DIST_DIR = REPO_ROOT / "web" / "dist"
 
 
 def data_file() -> Path:
@@ -55,6 +58,15 @@ def quotes_file() -> Path:
     """
     override = os.environ.get(QUOTES_FILE_ENV)
     return Path(override).expanduser() if override else DEFAULT_QUOTES_FILE
+
+
+def dist_dir() -> Path:
+    """Path to the built front end, overridable for tests via PAGECOUNT_DIST_DIR.
+
+    This is the `web/dist` Vite produces -- see DECISIONS.md 5.
+    """
+    override = os.environ.get(DIST_DIR_ENV)
+    return Path(override).expanduser() if override else DEFAULT_DIST_DIR
 
 
 def port() -> int:

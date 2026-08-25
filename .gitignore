@@ -7,7 +7,6 @@ __pycache__/
 data/
 server.log
 
-# Front end (Phase 2). The built output is Phase 4's business.
+# Front end (Phase 2). web/dist is committed as of Phase 4 -- FastAPI serves it.
 web/node_modules/
-web/dist/
 web/*.tsbuildinfo

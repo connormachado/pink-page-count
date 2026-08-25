@@ -177,6 +177,19 @@ export default function App() {
         onChanged={() => refresh("change")}
         onUnreachable={() => setUnreachable(true)}
       />
+
+      {/* A backup, not a feature: a plain link, no fetch/blob JS. The browser
+          triggers the download itself from the Content-Disposition header the
+          server sends back (DECISIONS.md 4.4). Out of the way, like ClassManager
+          above it. */}
+      <a
+        href="/api/export"
+        className="text-center text-sm text-[var(--rose-muted)] underline
+                   underline-offset-2 transition-colors duration-[var(--dur-ui)]
+                   hover:text-[var(--ink)]"
+      >
+        Download a backup
+      </a>
     </Shell>
   );
 }

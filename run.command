@@ -26,6 +26,13 @@ LOG="$APP_DIR/server.log"
 say()  { printf '%s\n' "$*"; }
 fail() { printf '\n%s\n\n' "$*" >&2; say "Press return to close this window."; read -r _ || true; exit 1; }
 
+# --- Already running? Just open the browser and get out of the way -------------
+if curl -fsS --max-time 1 "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1; then
+  say "The reading tracker is already running."
+  open "$URL"
+  exit 0
+fi
+
 # --- Find Python ---------------------------------------------------------------
 if command -v python3 >/dev/null 2>&1; then
   PYTHON="$(command -v python3)"
