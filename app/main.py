@@ -8,6 +8,7 @@ temporary data file without ever touching the real one (DECISIONS.md 3.7).
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from . import config
 from .classes import ClassStore, load_class_store_or_exit
 from .daytime import BadTimestamp, day_key, format_iso, now_local, parse_iso
+from .jsonfile import DataWriteError
 from .lifecycle import ping_payload
 from .models import (
     ClassCreate,
@@ -45,6 +47,49 @@ from .storage import Storage, load_storage_or_exit
 # Starlette renamed HTTP_422_UNPROCESSABLE_ENTITY; use the literal so this works on
 # both old and new versions without a deprecation warning.
 UNPROCESSABLE = 422
+
+# A write that could not land. 500 because it is the server's problem and not
+# something she sent -- there is no version of her request that would have worked
+# (DECISIONS.md 3.5.1, 4.5).
+WRITE_FAILED = 500
+
+# Where the diagnosis goes. The response says one plain thing; the errno, the path
+# and the traceback go here, and only here (DECISIONS.md 4.5).
+#
+# uvicorn configures its own three loggers and leaves the root logger alone, so a
+# record from this one finds no handler and goes out through logging's last-resort
+# handler -- stderr, at WARNING and above, which is why this logs at ERROR. That is
+# the same stream section 3.4's banner uses and the one `run.command` redirects into
+# server.log. Verified in the frozen bundle, not assumed: a failed write prints this
+# line and its full traceback there.
+logger = logging.getLogger("pinkpagecount")
+
+# What a failed write says on screen. One sentence for what happened, one for what
+# is still true. No errno, no path, no remedy she cannot perform, and nothing about
+# her or her reading -- this is a fault in the app or in her disk, and the copy says
+# so (DECISIONS.md 4.5, and 8: the app cannot scold, and it also cannot imply she
+# did something wrong by asking to save).
+#
+# The subject is named per file so the sentence is true rather than merely vague: a
+# theme that would not save did not fail to write the reading log. The reassurance
+# is always about her entries, because that is the thing worth reassuring anybody
+# about.
+_WRITE_FAILED_SUBJECT = {
+    "entries.json": "your reading log",
+    "classes.json": "your classes",
+    "settings.json": "your settings",
+}
+_WRITE_FAILED_FALLBACK_SUBJECT = "your data"
+
+
+def write_failed_message(path: Path) -> str:
+    """The one string a failed write shows. See DECISIONS.md 4.5 for every word of it."""
+    subject = _WRITE_FAILED_SUBJECT.get(path.name, _WRITE_FAILED_FALLBACK_SUBJECT)
+    return (
+        f"That didn't save — the app couldn't write to {subject}. "
+        "Everything you logged before is still there."
+    )
+
 
 # Shown at "/" when web/dist hasn't been built yet. Self-contained -- it cannot
 # depend on the very assets that are missing -- and a 200, not a 500 or a
@@ -152,6 +197,41 @@ def create_app(
     @app.exception_handler(StarletteHTTPException)
     async def _handle_http_exception(_request, exc: StarletteHTTPException):
         return _error(str(exc.detail), exc.status_code)
+
+    @app.exception_handler(DataWriteError)
+    async def _handle_write_failure(request, exc: DataWriteError):
+        """A mutation that could not reach the disk (DECISIONS.md 3.5.1, 4.5).
+
+        Without this handler the OSError escapes to Starlette, which answers with a
+        plain-text 500 carrying no JSON body -- and a body-less 5xx used to be
+        indistinguishable, to the front end, from nobody answering at all. The app
+        then told her it was not running while it was running, answering, and still
+        showing her old total. That was AUDIT.md B4.
+
+        Three things this deliberately does not do:
+
+        - It does not retry. A read-only directory is not going to become writable
+          between two attempts, and a disk that is full stays full.
+        - It does not write anywhere else. A save that lands in a fallback file is a
+          save she will never find, which is worse than one she was told about.
+        - It does not swallow the cause. The errno, the path and the traceback go to
+          the log, in full, on every occurrence.
+
+        The store has already rolled its in-memory list back to what is on disk
+        (storage.py's `except BaseException` around every `_persist`), so the total
+        the next GET returns is still the true one. Nothing here has to undo
+        anything.
+        """
+        logger.error(
+            "Write failed: %s %s could not write %s (errno %s): %s",
+            request.method,
+            request.url.path,
+            exc.path,
+            exc.errno,
+            exc.cause,
+            exc_info=exc.cause,
+        )
+        return _error(write_failed_message(exc.path), WRITE_FAILED)
 
     # -- helpers that need the stores ------------------------------------ #
 

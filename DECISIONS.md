@@ -232,6 +232,59 @@ memory; **every mutation persists the whole file before returning**. There is no
 write-behind, no batching, no dirty flag — a request that returned 200 is a request
 whose data is already on disk.
 
+### 3.5.1 Amendment: the inverse case, which is the one that used to lie
+
+3.5 says what a 200 means. It never said what a *failed* write means, and the answer
+the code gave was the worst available one.
+
+`atomic_write_json` raised `OSError`, no handler caught it, and Starlette answered
+with a **plain-text 500 carrying no JSON body**. `web/src/api.ts` read a body-less
+5xx as "nobody answered" and the app announced *"The reading tracker isn't running
+right now"* — while it was running, answering, and still displaying her old total.
+Every save was lost behind a message that said the opposite of what happened. That is
+AUDIT.md B4, verified end to end with the data directory read-only, and it is the
+finding that costs trust in the number.
+
+**Every write failure is one situation with one name.** `atomic_write_json` raises
+`DataWriteError`, wrapping the original `OSError` as `cause`. It covers the whole
+family, because they differ only in the errno:
+
+| What happened | errno |
+|---|---|
+| the directory is read-only, or owned by somebody else | `EACCES` |
+| the volume is mounted read-only | `EROFS` |
+| the disk is full | `ENOSPC` |
+| the quota is used up | `EDQUOT` |
+| the volume went away mid-write | `ENXIO` |
+| the device itself failed | `EIO` |
+
+Nothing branches on which one it was. The **response** does not, because there is no
+version of her request that would have worked and no remedy she can perform from
+inside the app; the **log** gets all of it (4.5).
+
+**Three things a failed write must never do**, all three of which are the difference
+between a failure and a data-loss bug:
+
+1. **No retry.** A read-only directory does not become writable between two attempts
+   and a full disk stays full. A retry only delays the truth.
+2. **No fallback location.** A save that lands in some other file is a save she will
+   never find, and a log split across two files is worse than a log with one entry
+   missing. **A write that cannot land must fail loudly, not land somewhere else.**
+3. **No silent success.** The mutation returns 5xx, and the in-memory list is rolled
+   back to match the disk — that rollback already existed (`except BaseException`
+   around every `_persist` in `storage.py`, `classes.py`, `settings.py`) and is what
+   makes the next `GET /api/stats` still the truth rather than a number that exists
+   only in RAM until the next restart.
+
+So the inverse of 3.5 now holds as stated: **a request that did not return 2xx is a
+request whose data is not on disk, and whose data is not in memory either.**
+`entries.json` is byte-identical afterwards, and no temp file is left beside it.
+
+**What this deliberately does not fix.** A write failure during *startup* — the first
+write of a missing file (3.3) — is still a traceback rather than the 3.4 banner. That
+is AUDIT.md S2, it is a different code path with a different audience (a terminal, not
+a browser), and it was out of scope for this change.
+
 ### 3.6 Concurrency
 
 One `threading.Lock` wraps each read-modify-write-persist cycle. uvicorn runs a single
@@ -341,6 +394,12 @@ Every error response is:
 
 FastAPI's default is `{"detail": ...}`, so handlers for `RequestValidationError`,
 `HTTPException`, and the domain validation error are installed to normalize all of them.
+A fourth handler, for `DataWriteError`, does the same for the one failure that used to
+escape as plain text and be misread as an outage (3.5.1, 4.5). **Every** status this API
+returns on purpose carries this body; a bare-text response from this server means an
+exception nobody anticipated, and the front end treats it as a failure rather than as
+silence (4.5).
+
 The page-order message names both numbers, e.g.
 
 ```
@@ -374,6 +433,96 @@ stopped. Building an import path would mean re-deriving the atomic-write and
 corrupt-file rules of §3 for a second entry point into the same files; the front door
 those files already have is enough, and this is a backup mechanism, not a feature to
 grow.
+
+### 4.5 The error taxonomy: three states, and only one of them may say "not running"
+
+Before this section there were two error states in the front end and three situations
+to put in them, so one of the three was wrong. The one that was wrong was the
+important one (3.5.1).
+
+**The three states, which are distinguished by what came back, not by what it said:**
+
+| State | What actually happened | Class in `api.ts` | What she sees |
+|---|---|---|---|
+| Unreachable | `fetch` itself rejected. No response, no status, nobody there. | `ServerUnreachable` | "The reading tracker isn't running right now." |
+| Refused | The server answered `4xx` with `{"error": …}` — it understood and said no. | `ApiError` | The server's message, verbatim, beside the field it names (4.2). |
+| Failed | The server answered `5xx`. It is running; something inside it did not work. | `ServerFault` | A failed-save message beside the form, or a failed-load message in place of the page. |
+
+**A 5xx is the server answering.** Something reached us and told us it failed, which
+is not the same as nothing reaching us at all. The single line that read a body-less
+5xx as `ServerUnreachable` is gone; a rejected `fetch` is now the **only** thing that
+can produce the "isn't running" screen, and that is the only claim of it that is ever
+true.
+
+`ServerFault` extends `ApiError` deliberately. Every call site already routes an
+`ApiError` to the message slot next to the thing she was doing, which is exactly where
+a failed save belongs — beside the form, with her typing still in it, not over the
+whole page. A caller that wants to tell the two apart does (`App.tsx`, for the load
+path); a caller that does not still does the right thing.
+
+**Nothing clears the form on a failure.** `EntryForm` clears `start`, `end` and `note`
+only after a save the server confirmed. Losing the page numbers she just typed on top
+of losing the save is the avoidable half of the problem.
+
+#### The copy, in full
+
+Server-side, `app/main.py::write_failed_message`, named per file so the sentence is
+true rather than merely vague:
+
+> That didn't save — the app couldn't write to **your reading log**. Everything you
+> logged before is still there.
+
+with *your classes* and *your settings* substituted for `classes.json` and
+`settings.json`, and *your data* for anything else.
+
+Front-end, `api.ts`, when a 5xx carries no message of its own:
+
+> That didn't save — something went wrong inside the app. Everything you logged
+> before is still there.
+
+Front-end, `App.tsx`, when the *load* fails rather than a save — the app is up and
+cannot put a page together:
+
+> The app is running, but it couldn't load your reading.
+> Nothing you've logged has gone anywhere. [Try again]
+
+**Every one of these makes the same three things true**, because the message it
+replaced made none of them true: it says the save did not happen; it does not claim
+the app is closed while it is answering; and it blames neither her nor her reading.
+
+**What is deliberately not in the copy:** no errno, no path under `~/Library`, no
+stack trace, no status code, and no remedy she cannot perform. She is not the person
+who fixes a full disk from inside a reading tracker. **None of that is discarded** —
+it goes to the log, in full, with the traceback, on every occurrence:
+
+```
+Write failed: POST /api/entries could not write …/entries.json (errno 13): …
+```
+
+A response nobody can act on and a log nobody can diagnose are two different failures;
+this splits them rather than choosing one.
+
+**§8 applies and is not strained by it.** A failed write is a fault in the app or in
+her disk, and saying so plainly is the opposite of a reprimand. There is no red state,
+no alarm styling, and no suggestion that she did something wrong by asking to save —
+the failed-save message renders in the same muted style every other message beside the
+form uses.
+
+**One dev-only consequence, accepted deliberately.** The line that is gone was there
+for a reason: with the backend down, Vite's `/api` proxy answers `500 text/plain`
+(measured, not assumed), and reading that as "unreachable" made `npm run dev` show
+the right screen. It now shows the failed screen instead — which is what the proxy
+literally reported, since the thing serving the page *is* up and the API behind it is
+not. **The shipped app has no proxy**: same origin, one server, and a server that is
+gone makes `fetch` reject, which is still `ServerUnreachable` and still says "isn't
+running". Verified in the bundle: killing the server under an open tab produces
+exactly that screen. Optimizing the ambiguous dev topology at the cost of the real one
+is how the bug got here in the first place.
+
+**A failed *refresh* leaves the page alone** when there is already data on screen.
+Those numbers are still the last thing the server actually said; replacing them with
+an error would throw away truth in order to report a failure. The load-failed state
+renders only when there is nothing to show instead.
 
 ---
 
