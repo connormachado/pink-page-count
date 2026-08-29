@@ -21,6 +21,129 @@ body {
   border-radius: 2px;
 }
 
+/* ------------------------------------------------------------------------ *
+ * The edge rails: Settings on the left, Classes on the right.
+ * DECISIONS.md 17.
+ *
+ * position: fixed is load-bearing, not decoration. A rail is out of flow
+ * entirely, so opening one cannot move or resize the centered column by a
+ * pixel. That is the guarantee §17 asks for, and it holds structurally
+ * rather than because three widths happen to add up.
+ *
+ * These rules only ever apply above RAIL_MIN_WIDTH_PX: below it App does not
+ * render a Rail at all, and both panels sit under the entry log as before.
+ * The breakpoint lives in useRailLayout.ts and only there -- there is no
+ * media query here to drift out of sync with it.
+ *
+ * Every color below is a semantic token that already existed. The rails
+ * introduce no new surface, which is why no preset needed rechecking (9.1).
+ * ------------------------------------------------------------------------ */
+
+.rail {
+  --rail-collapsed: 2.5rem;
+  --rail-expanded: 20rem;
+
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  width: var(--rail-collapsed);
+  overflow: hidden;
+  background-color: var(--pink-surface);
+  transition: width var(--dur-ui) ease;
+}
+
+.rail[data-open="true"] {
+  width: var(--rail-expanded);
+}
+
+/* The tab is the first child in both rails, so the keyboard reaches the
+ * control before the panel it opens. row-reverse on the right rail puts that
+ * same first child against the right edge and grows the panel inward. */
+.rail-left {
+  left: 0;
+  border-right: 1px solid var(--pink-edge);
+}
+
+.rail-right {
+  right: 0;
+  flex-direction: row-reverse;
+  border-left: 1px solid var(--pink-edge);
+}
+
+.rail-tab {
+  flex: 0 0 var(--rail-collapsed);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  border: 0;
+  background-color: transparent;
+  color: var(--rose-muted);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition:
+    color var(--dur-ui),
+    background-color var(--dur-ui);
+}
+
+.rail-tab:hover {
+  background-color: var(--pink-edge);
+  color: var(--ink);
+}
+
+/* The rail clips its overflow, and the default ring is drawn 2px outside a
+ * 40px strip pinned to the viewport edge -- half of it would be off screen.
+ * Inset it instead; it stays just as visible. */
+.rail-tab:focus-visible {
+  outline-offset: -3px;
+}
+
+/* Each label reads away from the edge it is attached to: bottom-to-top on
+ * the left, top-to-bottom on the right. */
+.rail-tab-label {
+  writing-mode: vertical-rl;
+}
+
+.rail-left .rail-tab-label {
+  transform: rotate(180deg);
+}
+
+.rail-tab-mark {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+/* A fixed basis, not a flexible one: the panel is laid out at its full width
+ * even while the rail is 40px wide and clipping it, so opening the rail
+ * reveals finished content instead of reflowing it for 180ms. */
+.rail-panel {
+  flex: 0 0 calc(var(--rail-expanded) - var(--rail-collapsed));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1.25rem 1.25rem 2rem;
+  opacity: 0;
+  visibility: hidden;
+  /* visibility flips only after the fade finishes, so a closed panel's
+   * controls leave the tab order and the accessibility tree instead of
+   * staying reachable behind an invisible rail. */
+  transition:
+    opacity var(--dur-ui) ease,
+    visibility 0s linear var(--dur-ui);
+}
+
+.rail[data-open="true"] .rail-panel {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity var(--dur-ui) ease,
+    visibility 0s;
+}
+
 /* Phase 3a motion. Both keyframes are only ever referenced through Tailwind's
  * motion-safe: variant, which compiles to @media (prefers-reduced-motion:
  * no-preference) -- with reduced motion the elements appear, unanimated. */

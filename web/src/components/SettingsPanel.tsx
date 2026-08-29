@@ -3,6 +3,7 @@ import { ApiError, ServerUnreachable, api } from "../api";
 import { CHIP_SETTING_LABELS } from "../stat";
 import type { SemanticToken } from "../theme";
 import type { ChipSetting, Settings } from "../types";
+import type { PanelChrome } from "./Rail";
 import { ThemeEditor } from "./ThemeEditor";
 
 type Props = {
@@ -10,29 +11,45 @@ type Props = {
   resolvedTheme: Record<SemanticToken, string> | null;
   onChanged: () => Promise<void>;
   onUnreachable: () => void;
+  /** Who owns the disclosure. "details" is the original stacked card, used
+   * below the entry log on a narrow window; "bare" is the same body with no
+   * wrapper, because the left rail is already the card and the disclosure
+   * (DECISIONS.md 17). Identical controls either way. */
+  chrome?: PanelChrome;
 };
 
-/** Settings, deliberately out of the way -- the same collapsed <details>
- * pattern as ClassManager, off the save path, closed by default
- * (DECISIONS.md 13, 6). */
-export function SettingsPanel({ settings, resolvedTheme, onChanged, onUnreachable }: Props) {
+/** Settings, deliberately out of the way -- off the save path and closed by
+ * default, whether that is a collapsed <details> under the entry log or a
+ * collapsed rail at the left edge (DECISIONS.md 13, 17, 6). */
+export function SettingsPanel({
+  settings,
+  resolvedTheme,
+  onChanged,
+  onUnreachable,
+  chrome = "details",
+}: Props) {
+  const body = (
+    <div className={chrome === "details" ? "mt-4 flex flex-col gap-5" : "flex flex-col gap-5"}>
+      <DefaultChipField
+        value={settings.default_chip}
+        onChanged={onChanged}
+        onUnreachable={onUnreachable}
+      />
+      <ThemeEditor
+        settings={settings}
+        resolvedTheme={resolvedTheme}
+        onChanged={onChanged}
+        onUnreachable={onUnreachable}
+      />
+    </div>
+  );
+
+  if (chrome === "bare") return body;
+
   return (
     <details className="rounded-2xl border border-[var(--pink-edge)] bg-[var(--pink-surface)] px-5 py-4">
       <summary className="cursor-pointer text-sm text-[var(--rose-muted)]">Settings</summary>
-
-      <div className="mt-4 flex flex-col gap-5">
-        <DefaultChipField
-          value={settings.default_chip}
-          onChanged={onChanged}
-          onUnreachable={onUnreachable}
-        />
-        <ThemeEditor
-          settings={settings}
-          resolvedTheme={resolvedTheme}
-          onChanged={onChanged}
-          onUnreachable={onUnreachable}
-        />
-      </div>
+      {body}
     </details>
   );
 }
