@@ -1359,16 +1359,14 @@ on `PATH`):
 
 **Still broken, and now reproducible in the bundle:**
 
-- **The user has no way to quit it (new, and the most serious).** Neither
-  `console=False` nor the `.app` wrapper makes this a GUI application — nothing
-  calls into AppKit, so the process never registers with the window server. A
-  running instance appears in System Events as neither an application process
-  nor a background-only one. **There is no Dock icon and no menu bar**, the Quit
-  AppleEvent that Cmd-Q and Dock > Quit send is never received, and the server
-  keeps running after the browser tab is closed. Shutdown is clean whenever a
-  signal arrives; nothing in the shipped app lets the user send one. Fixing it
-  means either a real Cocoa event loop (a new runtime dependency — CLAUDE.md
-  says ask first) or a visible quit affordance in the UI.
+- ~~**The user has no way to quit it (new, and the most serious).**~~ **Fixed in
+  16.2.** The finding stands as written — neither `console=False` nor the `.app`
+  wrapper makes this a GUI application, there is still no Dock icon and no menu
+  bar, and the Quit AppleEvent still never arrives. What changed is that it no
+  longer has to: the open browser tab heartbeats, and the server exits when the
+  beating stops. The tab is the window, and closing it is Cmd-Q. No Cocoa event
+  loop and no new runtime dependency; see 16.3 for why that trade is the design
+  and not a concession.
 - **B3** — the corrupt-file halt. The banner still renders correctly and exits
   `2` with the file untouched, but goes to `stderr`, which a Finder-launched
   `.app` has nothing attached to. See 14.2.
@@ -1378,13 +1376,13 @@ on `PATH`):
   Nothing in this section ships it, and the bundle has no update story at all.
 - **S1, S2, S3, S6** — `run.command` / `update.command` issues. Untouched. They
   do not affect the bundle, which does not use either script.
-- **Port already taken.** Deliberately not fixed. uvicorn exits `3` in about a
-  second after logging `[Errno 48] … address already in use` to `stderr` — so
-  from Finder the recipient sees an icon bounce once and vanish, with no browser
-  and no message. Note the second-launch case this creates: while an instance is
-  already running, double-clicking the app again does *nothing visible at all*.
-  `run.command` already solves this with a pre-flight `/api/health` check (5.2);
-  the bundle has no equivalent yet.
+- ~~**Port already taken.**~~ **Fixed in 16.1**, both halves of it. The bundle
+  now has the pre-flight this bullet said it lacked, and a stricter one than
+  `run.command`'s `/api/health` (5.2): a second launch while an instance is
+  running opens the browser at it and exits `0` instead of doing nothing visible
+  at all, and a port held by something that is *not* us produces a dialog on
+  screen rather than an icon that bounces once and vanishes. The exit code for
+  that case is still `3`, deliberately.
 
 ### 15.6 Not signed, not notarized, and Apple-silicon only
 
@@ -1400,3 +1398,276 @@ interpreter first.
 
 Both are deliberately out of this session's scope and neither is started.
 
+
+---
+
+## 16. App lifecycle: how it starts, and how it ends
+
+Section 15 shipped a bundle whose worst problem was not a bug in anything it
+did. It was that the app had **no beginning and no end a person could see.**
+15.5 recorded both halves:
+
+- double-clicking the icon while it was already running did *nothing visible at
+  all*, and
+- once running, nothing the user could do would ever stop it. No Dock icon, no
+  menu bar, no Cmd-Q. The server outlived the browser tab, then outlived the
+  browser, then outlived the day.
+
+Together those produce one conclusion in the recipient's head, and it is the
+wrong one: *the app is broken.* This section closes both.
+
+Nothing about the schema, storage semantics, the day boundary, or any existing
+endpoint changed. `app/` gained two modules (`lifecycle.py`, `notify.py`) and
+two routes; `app/main.py`'s `create_app` gained one optional keyword argument.
+Like 14 and 15, this is not a sixth phase.
+
+**The model, in one line: the browser tab is the window.** Opening the app opens
+a tab; the tab says it is still there; when it stops saying so, the app ends.
+Everything below follows from that sentence.
+
+### 16.1 A second launch always opens the app
+
+On startup, **before binding and before a single data file is opened**,
+`app/launcher.py` probes `127.0.0.1:8420` and takes one of three branches:
+
+| Found on the port | What happens | Exit |
+|---|---|---|
+| Nothing listening | start the server normally | — |
+| **Ours** | open the browser at it; start no second server | `0` |
+| Something else | say so on screen; start nothing | `3` |
+
+**`GET /api/ping` is the identity route** — `{"app":
+"com.connormachado.pinkpagecount", "pid": …}`, the identifier being the bundle
+identifier (15) so there is one name for this program and not two.
+
+It is deliberately **not** `/api/health`, which already exists and answers a
+different question. Health means *are you serving yet*, asked by a launcher
+about a server it has just started itself (15.2, and `run.command`'s pre-flight
+at 5.2). Ping means *are you me*, asked by a second launch about a first one. A
+stranger's web server on port 8420 can pass a health check by accident; it
+cannot answer with our identifier.
+
+`/api/ping` **touches no store and no file.** That is not decoration. The route
+has to be answerable before, and independently of, anything under `DATA_ROOT`
+being readable — and symmetrically, a second launch must be able to conclude
+"one is already running, just open a tab" without opening the reading log at
+all. A corrupt `entries.json` (3.4) must halt a launch that is going to *serve*;
+it must not halt a launch that is only going to open a browser tab at a server
+already serving happily. That ordering — probe first, load second — is the whole
+reason the probe is the first thing `main()` does.
+
+**Why the probe is two steps.** A bare TCP connect, then the HTTP GET.
+"Connection refused" and "answered with something unexpected" are genuinely
+different answers, and folding them into one `except URLError` is exactly how
+the third branch becomes unreachable by accident. A port that accepts a
+connection and then says nothing inside the timeout is *foreign*: something has
+it, and we cannot have it.
+
+**Something else on the port: a dialog, and exit 3.** The old behavior was a Dock
+bounce and silence (15.5's last bullet), because uvicorn's `[Errno 48]` goes to a
+`stderr` that a Finder-launched `.app` has nothing attached to. The exit code is
+deliberately still `3`, the one uvicorn used — the situation is identical, only
+the silence changed. What is new is `app/notify.py`, which runs
+`/usr/bin/osascript` to put a real dialog on screen:
+
+> Pink Page Count can't start.
+>
+> Another program on this Mac is already using port 8420, so there's nowhere for
+> the reading tracker to listen.
+>
+> Quit that program and open Pink Page Count again.
+>
+> Nothing you've logged has been touched.
+
+That is §8-clean: it is about a port, it names no number she is responsible for,
+it blames nobody, and its last line is true precisely because this path never
+opened a data file. The dialog dismisses itself after two minutes rather than
+waiting forever for someone who may have walked away.
+
+The message is passed to osascript as `argv` and read back inside the script
+with `item 1 of argv`, never interpolated into the script source, so text
+containing a quote or a brace cannot become AppleScript.
+
+**`osascript` is not a new runtime dependency.** It ships with macOS. Nothing is
+added to `requirements.txt`, nothing new is frozen into the bundle, and if the
+binary is missing the call is a no-op rather than an error. It lives in its own
+module rather than inside `app/launcher.py` because `tests/test_packaging.py`
+forbids the launcher from importing `subprocess` at all — a frozen app that
+spawns `sys.executable` re-executes its own bundle, and the cheapest way never
+to do that by accident is for launch logic to have no subprocess within reach.
+That test is unchanged and still passes.
+
+**No port-scanning fallback, deliberately.** Trying 8421, 8422, … would trade one
+legible failure for an app that is sometimes at a different address than the one
+every note, bookmark and instruction says it is at. One app, one port; if the
+port is taken, say so and stop.
+
+**Known limit, accepted.** An *older* Pink Page Count bundle — one built before
+this section — serves `/api/health` but 404s `/api/ping`, so this probe files it
+under "something else" and shows the port-taken dialog. Every recipient is a
+first install (14.1), and the honest answer on the developer's own machine is to
+quit the old one. Widening the probe to accept a health check as proof of
+identity would give back exactly the property that makes `/api/ping` worth
+having.
+
+### 16.2 Closing the tab quits the app
+
+The open page POSTs `/api/heartbeat` **every 30 seconds**. The server exits when
+no heartbeat has arrived for **five minutes**.
+
+**The endpoint reads nothing and writes nothing** — no request body, no response
+body, and nothing under `DATA_ROOT` is opened. A keepalive that touched the
+reading log would make the reading log depend on the lifecycle, which is
+backwards.
+
+**30s / 5min.** Ten beats of margin before anything happens. The margin is not
+generosity, it is Chrome: a hidden tab's timers are throttled, and under the
+most aggressive tier — "intensive throttling", after five minutes hidden — they
+fire at most **once a minute**, which is still five beats inside the window. The
+cost of being wrong is asymmetric and this is the cheap side of it. Quitting too
+eagerly takes away an app she was still using; quitting too late leaves an idle
+process nobody can see, which is the state the app was permanently in before
+this section.
+
+**The front end contains no visibility check anywhere.** Not
+`document.visibilityState`, not `hidden`, not a `visibilitychange` listener. A
+tab in a background window, or behind twenty others, is a tab she has open. Only
+closing it — or quitting the browser — may end the app, and the way to guarantee
+that is for the page to have no opinion about being seen. A failed beat is
+swallowed and never reaches the unreachable state (4.2's `ServerUnreachable`
+path): a keepalive blip must not replace a page full of her reading with an
+error she cannot act on.
+
+**The startup grace period is the timeout, and that is one rule rather than
+two.** `HeartbeatWatchdog` seeds its clock at construction, so *starting up
+counts as a heartbeat*. The server therefore gets the same five minutes to
+receive its first beat as it gets between any two later ones — far more than a
+browser needs to launch and load a page, even on a cold first run with
+Gatekeeper inspecting the bundle, and comfortably more than the launcher's own
+30-second readiness budget (15.2). A separate, shorter grace constant would be a
+second number to reason about and a second thing to get wrong. There is one
+invariant, **no heartbeat in the last five minutes**, and it holds from the first
+millisecond of the process.
+
+**Shutdown is the existing clean path, and it is a flag, not a signal.** The
+watchdog sets `server.should_exit`, which is the one field uvicorn's own
+SIGINT/SIGTERM handler sets — the same graceful route 15.5 already verified to
+exit `0` and release the port with no orphan. Nothing here signals, cancels, or
+kills. **A write in progress finishes:** uvicorn drains in-flight requests before
+stopping the loop, and 3.1's write is atomic and `F_FULLFSYNC`'d even if it did
+not. Durability outranks a prompt exit, here as everywhere else in this file. The
+watchdog thread is a daemon that only ever reads a clock; it is never the reason
+the process stays alive, and it can never be the reason a save is lost.
+
+**Nothing is said to the user when it happens.** §8: an app she has finished with
+going away quietly is not an event worth a message. There is no shutdown banner,
+no goodbye, and no notification.
+
+**Sleep and wake.** `time.monotonic()` on Darwin does not advance while the
+machine is asleep, so closing the lid with the tab still open does not by itself
+end the session — the tab resumes beating within 30 seconds of wake. When a
+timer does expire (the tab was closed before sleep, or the clock behaves
+otherwise), the server exiting is **correct behavior, not a bug**: double-clicking
+the icon starts it again in about a second, and that is the entire recovery
+story.
+
+**And the case the margin does not cover, stated plainly.** Throttling is
+survivable; *freezing* is not. Chrome can freeze or discard a tab that has been
+hidden for a long time under memory pressure, and a frozen tab's timers do not
+fire at all. When that happens the app exits, and returning to the tab shows the
+"isn't running right now" state (which already exists, and already says nothing
+was lost). This is deliberately not engineered around: every workaround —
+beating from a worker, holding a socket open, shortening the window — trades a
+rare, recoverable, one-double-click annoyance for a permanent complication, or
+for the old behavior of a process that never goes away. It is the same event as
+the sleep case above and it has the same answer.
+
+**Dev is unchanged, on purpose.** `on_heartbeat` defaults to `None`, so under
+`run.command` and in every test the route exists, answers, and is subscribed to
+by nobody; the server never exits on its own. There is no frozen-only route and
+no frozen-only branch anywhere in `app/main.py` — the single difference between
+the two launches is whether anyone is listening. Dev also already has a quit
+affordance the bundle does not: the terminal window and Control-C (5.2). A
+backend session with no browser tab open must not be killed five minutes in.
+
+### 16.3 Why there is still no Dock icon
+
+There is no Dock icon, no menu bar, and no Cmd-Q, and **this section does not add
+them.**
+
+Neither `console=False` nor the `.app` wrapper makes a process a GUI
+application. Registering with the window server means calling into AppKit, and
+the only ways to do that from here are a real Cocoa event loop or a bridge to
+one — `pyobjc`, `rumps`, anything of that shape. Every one of them is a **new
+runtime dependency**, which CLAUDE.md says to ask about first, and all of them
+are a large amount of new machinery whose entire purpose would be to provide a
+Quit menu item for a program whose window is in another application.
+
+So the tab is the window, and closing it is Cmd-Q. That is not a workaround
+dressed up as a design; it is what the app already looked like to the person
+using it. She opens it, reads a number, logs a page range, and closes the tab.
+Before this section that gesture left a process running until the next reboot;
+now it ends the app, which is what she already believed it did.
+
+`Info.plist` gains nothing here either — no `LSUIElement`, no `LSBackgroundOnly`.
+Both keys tell LaunchServices how to treat an app's Dock presence, and this
+process never registers with the window server at all, so neither key changes
+what happens on screen. Declaring one would be documentation filed in the wrong
+place; this paragraph is where it belongs.
+
+What that costs, stated plainly: a launch that fails *after* the probe still
+bounces the icon and vanishes, because the bounce belongs to LaunchServices and
+there is no tile of ours to replace it with. **B3** — the corrupt-file banner
+going to a `stderr` nobody is attached to — is exactly that case, and it is
+**not fixed here.** But `app/notify.py` now exists, and it is the mechanism that
+fix will use.
+
+### 16.4 What is verified
+
+**Tests.** Backend **253**, up from 223. `tests/test_lifecycle.py` covers the
+grace period holding, the timeout expiring, a beat resetting the timer, the last
+beat winning over an earlier one, expiry firing exactly once, and all four probe
+verdicts — nothing listening, ours, a stranger that 404s, a stranger that answers
+valid JSON under another name, and one that accepts the connection and never
+answers. Two of them start a **real uvicorn on a real port** and assert the port
+is *released*, not merely that a flag was set. `tests/test_launcher.py` pins the
+three launch branches — including that the two non-starting ones open no data
+file at all — and that the port-taken text does not scold. `tests/test_packaging.py`
+gains two guards: no module in `app/` except `notify.py` may import a
+process-spawning module, and `notify.py` may name exactly one executable path.
+
+Front end: **102**, up from 97. `heartbeat.test.tsx` asserts the beat on open,
+the interval, that a **hidden** tab keeps beating, that unmounting stops it, and
+that a failed beat is never reported as an outage.
+
+**In the bundle**, rebuilt from this section's code, with the dev venv off `PATH`
+and the environment stripped to `env -i` (15.5's conditions):
+
+- **First launch** serves `http://127.0.0.1:8420`, `/api/ping` answers
+  `{"app": "com.connormachado.pinkpagecount", "pid": 63646}`.
+- **Second launch while it is running** prints `Pink Page Count is already
+  running (pid …) — opening http://127.0.0.1:8420`, opens the browser, and exits
+  `0`. No second server: the listener set before and after is the same single
+  pid. Verified through **LaunchServices** (`open "Pink Page Count.app"`, the
+  actual double-click path), not only by running the inner executable — this is
+  the case that used to do nothing visible at all.
+- **A stranger on the port** (a plain `http.server` holding it, 404ing
+  `/api/ping`) produces the dialog on screen — an `osascript` process was
+  observed running with it — and the launcher exits **`3`**. Not silence.
+- **Closing the tab ends the app.** A real browser tab, in its own Chrome
+  profile: the server stayed up for **360 s** with the tab open — past the
+  five-minute timeout, so the shipped front end is genuinely beating and not
+  merely present — and after the tab was closed it stopped between 270 s and
+  300 s later, at the timeout, with **the port released and no orphan process**.
+- **Loopback binding unchanged.** `app/launcher.py`'s `host=config.HOST` inside
+  the `uvicorn.Config(...)` call is still the only line that binds the socket in
+  the frozen build, and `app/config.py:21` (`HOST = "127.0.0.1"`) is still the
+  only value that can reach it. One listening socket, `TCP 127.0.0.1:8420
+  (LISTEN)`, nothing on `0.0.0.0` and nothing on any other interface — and the
+  app process holds no other TCP socket of any kind.
+- **`DATA_ROOT` is byte-for-byte identical** before and after the whole run —
+  every launch, every probe, every heartbeat, and both shutdowns. The two new
+  routes touch nothing under it, as 16.1 and 16.2 promise.
+
+**Not fixed here, and unchanged:** B3, B4, B5, S1–S7, and 15.6's signing and
+architecture problems. This section was scoped to lifecycle.

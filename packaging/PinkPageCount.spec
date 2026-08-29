@@ -124,8 +124,14 @@ exe = EXE(
     # process never registers with the window server -- measured, not assumed:
     # a running instance appears in System Events as neither an application
     # process nor a background-only one. **There is therefore no Dock icon and
-    # no menu bar, so the user has no way to quit it.** That is the open problem
-    # recorded in DECISIONS.md 15.5; it is not fixed here.
+    # no menu bar**, and the Quit AppleEvent that Cmd-Q sends never arrives.
+    #
+    # That is still true and is no longer a problem: DECISIONS.md 16 makes the
+    # browser tab the window. The page heartbeats while it is open and the
+    # server exits when the beating stops, so closing the tab is how the app
+    # quits. See 16.3 for why no LSUIElement or LSBackgroundOnly key is set
+    # below -- neither would change anything for a process the window server
+    # has never heard of.
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
