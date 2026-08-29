@@ -764,12 +764,98 @@ are handed in by the caller, and the module still never imports `config` or
 `storage` and never names `entries.json` — enforced by the same
 `tests/test_quotes.py` AST check as before.
 
+### 10.1.2 Amendment: attribution, and the delimiter that carries it
+
+A quote line may now name who said it. The shipped list is largely quotable
+people, and a quote from a named person that does not name them reads as if the
+app is claiming it.
+
+**The format is `<quote text>||<attributor>`, split on the FIRST `||`.** Two
+pipes, not one: a single pipe turns up inside ordinary prose, and a quote is
+prose. Everything after the first delimiter is the attributor, including any
+later `||` — that is what lets `Sarah Grimké, quoted by Ruth Bader Ginsburg`
+carry its own punctuation without needing an escape rule. There is still no
+escaping, no front matter, and no JSON (10.2): she can still open the file in
+TextEdit, type a sentence, and save.
+
+**A line with no delimiter is a valid record with no attributor. This is the
+rule that matters most in this section.** Her own hand-written lines in
+`my-quotes.txt` will all look like this, and a parser that treated a bare line
+as an error — or even as something to warn about — would turn her own file into
+a source of complaints about her own writing. It is not a degraded case, not a
+fallback, and never a warning. §8's spirit, applied to a file format.
+
+The rest of the parsing rules, applied identically to `RESOURCE_ROOT/quotes.txt`
+and `DATA_ROOT/my-quotes.txt`:
+
+- Both fields are stripped independently.
+- An empty attributor after stripping (`foo||`) normalizes to `None`, so
+  nothing downstream has two ways to say "nobody."
+- An empty quote text after stripping (`||Someone`) is **skipped as
+  malformed** — it is the one shape that carries words but is not a quote.
+- Comments and blank lines are skipped exactly as before (10.2), and are never
+  counted as malformed.
+
+`parse_text` returns the malformed lines alongside the records rather than
+dropping them, and `tests/test_quotes.py` asserts the shipped `quotes.txt`
+produces zero of them. A typo'd delimiter would otherwise drop a quote
+silently, which is the only failure mode in this feature nobody would ever
+notice.
+
+**Deduplication keys on the quote text alone, case-sensitive, first occurrence
+winning.** Union order is unchanged: bundled lines, then the user's. Keying on
+the whole record would let a user line that repeats a bundled quote with a
+different attributor — or with none — appear as a second copy of the same
+sentence, which is the one thing dedup exists to prevent. First-occurrence-wins
+means a reviewed bundled attribution is never displaced by an unreviewed one.
+Case-sensitive because two spellings are two quotes; folding case would
+silently drop a line she capitalized deliberately.
+
+**The API shape changes.** `GET /api/quote` returned `{"quote": "..."}` and now
+returns:
+
+```json
+{"text": "...", "attribution": "..." | null}
+```
+
+`attribution` is always present and is `null` far more often than it is a
+string. Present-and-null rather than absent, so the front end's "render
+nothing" branch tests a value and not a key. This is a **breaking change to an
+existing endpoint** and is recorded here for that reason; the app ships its
+front end and its server together as one bundle (§15), so there is no version
+of one that has to talk to an older version of the other.
+
+Rotation is untouched: `sha256(day_key) % len(quotes)` over the unioned list,
+exactly as 10.3 describes, operating on records instead of strings.
+
+**Rendering (§9, unamended).** The attributor sits beneath the quote,
+right-aligned to the quote block, one step smaller (14px against the quote's
+16px), prefixed with an em dash. It carries `--rose-muted` — the same
+secondary-text token the quote itself uses, and the only semantic token §9
+checks at the 4.5:1 body threshold against both backgrounds. **The de-emphasis
+is size and alignment, never a dimmer color.** §9's palette is six names and
+this feature invents none; a washed-out variant is exactly where a contrast
+regression would hide, so there deliberately is no token for one.
+`ATTRIBUTION_TOKEN` in `DailyQuote.tsx` names the token so the WCAG check runs
+against the attribution's actual color rather than one that happens to match it
+today.
+
+**When `attribution` is null, nothing is rendered**: no em dash, no empty
+element, no reserved vertical space. Measured in Chrome across all six presets
+at 1440px and 768px: the quote block is **48px** attributed and **24px**
+unattributed — the unattributed case is exactly the quote's own line box, and
+the element simply is not in the DOM.
+
 ### 10.2 Format
 
 One quote per line, UTF-8. Blank lines and lines whose first non-space character is `#`
 are ignored, so the file can carry a comment header explaining itself. Lines are
 stripped. No escaping, no front matter, no JSON — she should be able to open it in
 TextEdit, type a sentence, and save.
+
+**Amended by 10.1.2:** a line may carry an attributor after `||`. Everything above
+still holds — a line with no delimiter is still exactly what this section describes,
+and is still a whole, valid quote.
 
 ### 10.3 Selection is deterministic from the day key
 

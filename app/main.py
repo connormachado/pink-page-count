@@ -346,19 +346,25 @@ def create_app(
         return compute_stats(storage.all(), now_local())
 
     @app.get("/api/quote", response_model=QuoteOut)
-    async def read_quote() -> dict[str, str]:
-        """Today's quote, read off disk on every request.
+    async def read_quote() -> dict[str, str | None]:
+        """Today's quote and who said it, read off disk on every request.
 
         Reading per-request rather than caching at startup means editing
         quotes.txt shows up on the next page load with no restart. The same
         logical day always yields the same quote, so reloading never shuffles it
         (DECISIONS.md 10).
 
+        `attribution` is null whenever the line carried no attributor, which is
+        an ordinary line and not a degraded one (DECISIONS.md 10.1, amended).
+        The front end renders nothing at all for a null -- no dash, no empty
+        element, no reserved space.
+
         This handler touches `quotes` and nothing else. It has no access to
         `storage` and no failure mode -- a missing or empty file is a fallback
         string with a 200, never an error.
         """
-        return {"quote": quotes.for_day(day_key(now_local()))}
+        quote = quotes.for_day(day_key(now_local()))
+        return {"text": quote.text, "attribution": quote.attribution}
 
     @app.get("/api/export")
     async def export() -> JSONResponse:

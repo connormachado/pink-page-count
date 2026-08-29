@@ -42,6 +42,16 @@ export type Stats = {
   first_entry_date: string | null;
 };
 
+/** Mirrors app/models.py::QuoteOut (DECISIONS.md 10.1, amended).
+ *
+ * `attribution` is null far more often than it is a string -- every
+ * hand-written line in her own my-quotes.txt has none -- so null is the
+ * ordinary case here, not a degraded one, and nothing is rendered for it. */
+export type DailyQuote = {
+  text: string;
+  attribution: string | null;
+};
+
 /** The default_chip setting's own vocabulary -- note "all_time" here vs.
  * "all" in stat.ts's StatKey; chipFromSetting() bridges the two. */
 export type ChipSetting = "all_time" | "today" | "streak";

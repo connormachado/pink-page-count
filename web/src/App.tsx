@@ -3,6 +3,7 @@ import { ServerUnreachable, api } from "./api";
 import { BigNumber } from "./components/BigNumber";
 import { Celebration } from "./components/Celebration";
 import { Chips } from "./components/Chips";
+import { DailyQuote } from "./components/DailyQuote";
 import { EmptyNumber } from "./components/EmptyNumber";
 import { EntryForm } from "./components/EntryForm";
 import { ClassManager } from "./components/ClassManager";
@@ -229,7 +230,7 @@ export default function App() {
   return (
     <>
       <Shell>
-        <p className="text-center text-[var(--rose-muted)]">{quote}</p>
+        <DailyQuote quote={quote} />
 
         {nothingLoggedYet ? (
           <EmptyNumber />
