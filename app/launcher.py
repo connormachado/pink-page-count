@@ -1,7 +1,9 @@
-"""The frozen bundle's entry point. See DECISIONS.md section 15.
+"""The frozen bundle's entry point. See DECISIONS.md sections 15 and 16.
 
-Starts the server *in this process*, waits for the port to answer, opens the
-browser at it, and returns when the server has stopped.
+Probes the port for an instance already running, starts the server *in this
+process* if there is none, waits for the port to answer, opens the browser at
+it, and returns when the server has stopped -- which now happens on its own,
+once the browser tab that was watching it goes away (16.2).
 
 **This module never invokes the uvicorn CLI.** `run.command:107` passes a
 literal `--host 127.0.0.1` on the command line, which means that at real launch
@@ -32,7 +34,9 @@ import webbrowser
 
 from . import config
 from .classes import load_class_store_or_exit
+from .lifecycle import HeartbeatWatchdog, Probe, probe
 from .main import create_default_app
+from .notify import alert
 from .settings import load_settings_store_or_exit
 from .storage import load_storage_or_exit
 
@@ -41,6 +45,12 @@ from .storage import load_storage_or_exit
 # on first run, is the slow case this has to cover.
 READY_TIMEOUT_SECONDS = 30.0
 POLL_INTERVAL_SECONDS = 0.1
+
+# Exit code when the port is held by something that is not us. Deliberately the
+# same 3 uvicorn already exits with on "address already in use" (DECISIONS.md
+# 15.5): the situation is identical, so the code should be too. What changed is
+# that it is no longer silent (16.1).
+EXIT_PORT_TAKEN = 3
 
 
 def _emit(line: str) -> None:
@@ -62,6 +72,37 @@ def _emit(line: str) -> None:
         os.write(1, (line + "\n").encode("utf-8", "replace"))
     except OSError:
         pass  # fd 1 closed; a diagnostic line is never worth failing a launch over
+
+
+def _port_taken(port: int) -> None:
+    """Something else owns the port. Say so, out loud, and stop.
+
+    DECISIONS.md 16.1: the old behavior here was a Dock bounce and silence, which
+    reads as "the app is broken". This does not go looking for another port to
+    use -- see 16.1 for why a port-scanning fallback is the wrong fix.
+
+    Nothing about this is a reprimand (§8). It is about a port, it names no
+    number she is responsible for, and it says her log is untouched -- which is
+    true, because this path has not opened a data file at all.
+    """
+    message = (
+        "Pink Page Count can't start.\n\n"
+        f"Another program on this Mac is already using port {port}, "
+        "so there's nowhere for the reading tracker to listen.\n\n"
+        "Quit that program and open Pink Page Count again.\n\n"
+        "Nothing you've logged has been touched."
+    )
+    _emit_error(message)
+    alert("Pink Page Count", message)
+    raise SystemExit(EXIT_PORT_TAKEN)
+
+
+def _emit_error(text: str) -> None:
+    """The same message on fd 2, for whoever ran the executable from a Terminal."""
+    try:
+        os.write(2, (text + "\n").encode("utf-8", "replace"))
+    except OSError:
+        pass
 
 
 def _wait_for_ready(health_url: str, server) -> bool:
@@ -90,8 +131,26 @@ def _wait_for_ready(health_url: str, server) -> bool:
 
 
 def main() -> None:
-    """Start the server, open the browser, and block until the server stops."""
+    """Probe, then start the server, open the browser, and block until it stops."""
     import uvicorn
+
+    bind_port = config.port()
+    origin = f"http://{config.HOST}:{bind_port}"
+
+    # -- Is one already running? (DECISIONS.md 16.1) ------------------------- #
+    #
+    # First, before binding and before a single data file is opened. A second
+    # double-click must not be able to halt on a corrupt entries.json that the
+    # instance already serving has no problem with -- and more simply, a launch
+    # that is only going to open a browser tab has no business reading the log.
+    verdict, existing = probe(config.HOST, bind_port)
+    if verdict is Probe.OURS:
+        running_pid = existing.get("pid") if existing else None
+        _emit(f"Pink Page Count is already running (pid {running_pid}) -- opening {origin}")
+        webbrowser.open(f"{origin}/")
+        return  # exit 0. One server, one port, two icons clicked.
+    if verdict is Probe.FOREIGN:
+        _port_taken(bind_port)  # raises SystemExit
 
     # Resolve and validate all three data files *before* uvicorn starts, exactly
     # as app.main.main() does, so a corrupt file halts with our banner instead of
@@ -106,12 +165,23 @@ def main() -> None:
     load_class_store_or_exit(config.classes_file())
     load_settings_store_or_exit(config.settings_file())
 
-    bind_port = config.port()
-    origin = f"http://{config.HOST}:{bind_port}"
+    # -- Who is still watching? (DECISIONS.md 16.2) -------------------------- #
+    #
+    # The open page beats; when the beating stops, so does the app. This is the
+    # only quit affordance the bundle has -- there is no Dock icon to Cmd-Q and
+    # no menu bar to quit from (16.3) -- so the browser tab *is* the window, and
+    # closing it closes the app.
+    watchdog = HeartbeatWatchdog()
+
+    def _app_factory():
+        # A closure, not the string "app.main:create_default_app": uvicorn
+        # resolves a string through import_from_string, the import-by-name
+        # PyInstaller cannot trace (15.2). This is an ordinary call.
+        return create_default_app(watchdog.beat)
 
     server = uvicorn.Server(
         uvicorn.Config(
-            create_default_app,
+            _app_factory,
             factory=True,
             # DECISIONS.md 5: loopback only, never 0.0.0.0. THIS is the line that
             # binds the socket in the frozen build -- config.HOST reaches
@@ -141,16 +211,37 @@ def main() -> None:
     # be the thing that keeps the process alive.
     threading.Thread(target=_open_browser, name="open-browser", daemon=True).start()
 
+    def _no_one_is_watching() -> None:
+        """Five minutes without a heartbeat. Leave, quietly.
+
+        `should_exit` is *exactly* the existing clean-shutdown path: it is the
+        one field uvicorn's own SIGINT/SIGTERM handler sets, so this takes the
+        same graceful route that was already verified to exit 0 and release the
+        port with no orphan (15.5). Nothing here signals, cancels, or kills, so
+        a write in progress finishes -- uvicorn drains in-flight requests before
+        the loop stops, and DECISIONS.md 3.1's write is atomic even if it did
+        not. Durability outranks a prompt exit.
+
+        Nothing is said to the user. An app she has finished with going away is
+        not an event worth a message (§8).
+        """
+        _emit("No browser tab has checked in for five minutes -- stopping.")
+        server.should_exit = True
+
+    watchdog.start(_no_one_is_watching)
+
     # Blocks until the server stops. Run from the main thread, which is what lets
     # uvicorn install its own SIGINT/SIGTERM handlers. Both work in the frozen
     # bundle, verified: SIGINT exits 0, SIGTERM exits 143, and in each case the
     # port is released with no orphan left behind.
     #
-    # What does NOT reach this code is the Quit AppleEvent that Cmd-Q and
+    # What still does NOT reach this code is the Quit AppleEvent that Cmd-Q and
     # Dock > Quit send -- this process is not a GUI application and never
-    # receives it. See DECISIONS.md 15.5: shutdown is clean whenever a signal
-    # arrives, but nothing in the shipped app gives the user a way to send one.
+    # receives it (15.5). It no longer has to: the watchdog above means the
+    # browser tab is the quit affordance, and closing it is how the app ends.
+    # See DECISIONS.md 16.3 for why that is the design and not a workaround.
     server.run()
+    watchdog.stop()
 
 
 if __name__ == "__main__":

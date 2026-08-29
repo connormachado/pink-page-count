@@ -92,10 +92,24 @@ export function stubFetch(routes: {
   classPatch?: Route;
   classDelete?: Route;
   settingsPatch?: Route;
+  heartbeat?: Route;
 }) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = (init?.method ?? "GET").toUpperCase();
+
+    // The keepalive of DECISIONS.md 16.2. Matched before the method branches
+    // below so it can never fall through into `routes.post` and be answered --
+    // or counted -- as an entry being saved.
+    if (url.includes("/api/heartbeat")) {
+      const beat = routes.heartbeat ?? { status: 204 };
+      const beatStatus = beat.status ?? 204;
+      return new Response(beatStatus === 204 ? null : JSON.stringify(beat.body ?? null), {
+        status: beatStatus,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     const isClass = url.includes("/api/classes");
     const isSettings = url.includes("/api/settings");
 

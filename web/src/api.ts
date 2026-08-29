@@ -78,6 +78,11 @@ export const api = {
   // class_id cleared by the server (DECISIONS.md 12.3).
   removeClass: (id: string) => request<void>(`/api/classes/${id}`, { method: "DELETE" }),
 
+  /** "This page is still open." The frozen app quits when these stop arriving,
+   * which is what makes closing the tab quit the app (DECISIONS.md 16.2). No
+   * body, no response, and nothing on the server touches a data file. */
+  heartbeat: () => request<void>("/api/heartbeat", { method: "POST" }),
+
   settings: () => request<Settings>("/api/settings"),
   updateSettings: (changes: SettingsPatch) =>
     request<Settings>("/api/settings", { method: "PATCH", body: JSON.stringify(changes) }),

@@ -8,6 +8,7 @@ temporary data file without ever touching the real one (DECISIONS.md 3.7).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from . import config
 from .classes import ClassStore, load_class_store_or_exit
 from .daytime import BadTimestamp, day_key, format_iso, now_local, parse_iso
+from .lifecycle import ping_payload
 from .models import (
     ClassCreate,
     ClassOut,
@@ -100,6 +102,7 @@ def create_app(
     classes: ClassStore,
     settings: SettingsStore,
     dist_dir: Path | None = None,
+    on_heartbeat: Callable[[], None] | None = None,
 ) -> FastAPI:
     """Build the app around injected stores (DECISIONS.md 3.7).
 
@@ -113,6 +116,12 @@ def create_app(
     from touching real data. Requiring `classes` and `settings` makes "no test
     ever touches the real data file" structural rather than a habit; passing an
     explicit `quotes` (as every test does) skips this branch entirely.
+
+    `on_heartbeat` is where the frozen bundle hangs its watchdog (DECISIONS.md
+    16.2). Left None -- every test, and `run.command` -- /api/heartbeat still
+    exists and still answers, and nothing is listening to it. There is no
+    frozen-only route and no frozen-only branch anywhere in this file; the one
+    difference between the two launches is whether anyone subscribed.
     """
     if quotes is None:
         user_quotes_path = config.user_quotes_file()
@@ -168,6 +177,33 @@ def create_app(
     @app.get("/api/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/api/ping")
+    async def ping() -> dict[str, Any]:
+        """Who is on this port -- DECISIONS.md 16.1.
+
+        Distinct from /api/health, which answers "are you serving yet?" and is
+        what the launcher and `run.command` poll during *their own* startup. This
+        one answers "are you *me*?", asked by a second launch about a first one,
+        and it is the only route whose answer a stranger's web server on port
+        8420 cannot accidentally imitate.
+
+        Touches no store and no file: it must be answerable before -- and
+        independently of -- anything under DATA_ROOT being readable.
+        """
+        return ping_payload()
+
+    @app.post("/api/heartbeat", status_code=status.HTTP_204_NO_CONTENT)
+    async def heartbeat() -> Response:
+        """The open page saying it is still open -- DECISIONS.md 16.2.
+
+        Reads nothing, writes nothing, and returns no body. In the frozen bundle
+        this is the *only* thing keeping the process alive; in dev nobody is
+        subscribed and it is an accepted no-op (see `create_app`).
+        """
+        if on_heartbeat is not None:
+            on_heartbeat()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.post(
         "/api/entries",
@@ -374,12 +410,18 @@ def create_app(
     return app
 
 
-def create_default_app() -> FastAPI:
-    """uvicorn factory: open the real data files, or print the banner and halt."""
+def create_default_app(on_heartbeat: Callable[[], None] | None = None) -> FastAPI:
+    """uvicorn factory: open the real data files, or print the banner and halt.
+
+    The argument has a default so this stays a zero-argument factory for the
+    uvicorn CLI in `run.command`. `app/launcher.py` is the only caller that
+    passes one (DECISIONS.md 16.2).
+    """
     return create_app(
         load_storage_or_exit(config.data_file()),
         classes=load_class_store_or_exit(config.classes_file()),
         settings=load_settings_store_or_exit(config.settings_file()),
+        on_heartbeat=on_heartbeat,
     )
 
 

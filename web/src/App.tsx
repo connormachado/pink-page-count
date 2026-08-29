@@ -27,6 +27,12 @@ const CONFIRMATIONS = ["Saved.", "Got it.", "Logged.", "Added."];
 const CONFIRM_MS = 2600;
 const CELEBRATE_MS = 5200;
 
+/** How often this page tells the server it is still open (DECISIONS.md 16.2).
+ * The server gives up after five minutes, so this is ten beats of margin --
+ * enough that Chrome's most aggressive background-tab throttling, which slows
+ * a hidden tab's timers to once a minute, still lands five beats inside it. */
+const HEARTBEAT_MS = 30_000;
+
 export default function App() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [entries, setEntries] = useState<Entry[] | null>(null);
@@ -98,6 +104,26 @@ export default function App() {
     void refresh("load");
     void fetchQuote().then(setQuote);
   }, [refresh]);
+
+  // The app is alive for exactly as long as this page is open (DECISIONS.md
+  // 16.2). There is no Dock icon and no menu bar to quit from, so this tab is
+  // the window: while it exists it says so, and when it goes the server goes.
+  //
+  // Deliberately no `document.visibilityState` check anywhere in here. A tab
+  // in a background window, or behind twenty others, is still a tab she has
+  // open -- only closing it, or quitting the browser, may end the app.
+  //
+  // Failures are swallowed on purpose. A missed beat is not worth a word: the
+  // server either comes back before the timeout or it has already gone, and in
+  // neither case is a keepalive the thing that should say so. It must never
+  // reach setUnreachable -- a blip here would replace a page full of her
+  // reading with an error she cannot act on.
+  useEffect(() => {
+    const beat = () => void api.heartbeat().catch(() => {});
+    beat();
+    const timer = window.setInterval(beat, HEARTBEAT_MS);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Applies on every settings fetch, load and later changes alike.
   // settings.json is the sole source of truth (DECISIONS.md 13) -- this

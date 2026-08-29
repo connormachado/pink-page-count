@@ -195,6 +195,55 @@ def test_launcher_does_not_shell_out_to_the_uvicorn_cli():
     )
 
 
+def test_only_notify_may_spawn_a_process():
+    """`app/notify.py` is the one module in app/ allowed to import subprocess.
+
+    A frozen app that spawns `sys.executable` re-executes its own bundle, which
+    is why the launcher is forbidden from importing subprocess at all (above).
+    Keeping that ban to one module is only meaningful if the ban does not
+    quietly reappear next door -- so this widens it to every module in app/,
+    with `notify.py` (DECISIONS.md 16.1) as the single, named exception whose
+    one command line is a constant: `/usr/bin/osascript`.
+    """
+    allowed = {"notify.py"}
+    offenders = []
+    for module in sorted((REPO_ROOT / "app").glob("*.py")):
+        if module.name in allowed:
+            continue
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            names = []
+            if isinstance(node, ast.Import):
+                names = [alias.name.split(".")[0] for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                names = [node.module.split(".")[0]]
+            if any(name in {"subprocess", "multiprocessing"} for name in names):
+                offenders.append(module.name)
+
+    assert not offenders, (
+        f"{sorted(set(offenders))} import a process-spawning module; only "
+        "app/notify.py may, and only to run /usr/bin/osascript (16.1)"
+    )
+
+
+def test_notify_runs_nothing_but_osascript():
+    """The one command line in app/notify.py is a constant, not a computed path."""
+    from app import notify
+
+    assert notify.OSASCRIPT == "/usr/bin/osascript"
+
+    tree = ast.parse((REPO_ROOT / "app" / "notify.py").read_text(encoding="utf-8"))
+    literals = {
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+    executables = {value for value in literals if value.startswith("/")}
+    assert executables == {"/usr/bin/osascript"}, (
+        f"app/notify.py names more than one executable path: {sorted(executables)}"
+    )
+
+
 def test_pyinstaller_entry_script_is_a_stub():
     """packaging/entry.py must hold no launch logic of its own (15.2)."""
     tree = ast.parse(ENTRY.read_text(encoding="utf-8"))
