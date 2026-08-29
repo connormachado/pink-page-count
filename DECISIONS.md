@@ -1504,32 +1504,110 @@ Both are deliberately out of this session's scope and neither is started.
 
 `AppIcon.icns` is still the Phase 2 icon -- the `--pink-hot` (`#FF2E88`) rounded
 square with the `--pink-surface` (`#FFE8F0`) inset, both frozen tokens (9.1),
-unchanged in shape, colour and proportion. Added centred on it: a solid
+unchanged in shape, colour and proportion. Added centred on it: a
 scales-of-justice mark in **`--ink` (`#2B1A22`)** -- the third and only other hex
 literal `scripts/make_icon.py` mirrors from `tokens.css`, chosen because it is
 the repo's designated high-contrast-on-a-light-surface colour and clears the mark
 against the inset with room to spare. `--pink-hot` was not used: 9.1 reserves it
 for the primary numeral, and this honours that.
 
-**The mark is designed for 32px first.** It is viewed in the Dock at that size far
-more than at any other, and a literal drawing of a balance dissolves there -- the
-beam and the two suspension lines go sub-pixel and vanish, leaving two floating
-pans over a post. So the form is deliberately blunt: one filled silhouette, no
-strokes, no gradients, no inner detail; a **thick capsule beam**, round **solid
-pan weights** on short fat stems rather than open pans on thin lines, a central
-post, and a **solid triangle + foot bar** for the base. It was rendered and
-inspected at 16/32/64/128/256/512/1024 (previews land in `scripts/icon-preview/`,
-regenerated every run). At 32px the beam, stems and pans are all present and
-correctly weighted; at 16px the beam and pans survive as a legible mass while the
-stems drop out -- acceptable, because 32px is the design target and 16px still
-reads as a balance and nothing else.
+#### 15.7.1 Amendment: the mark is now the drawing in `scales-mark.svg`
 
-Every dimension of the mark is a fraction-of-size constant in `MARK` at the top
-of `make_icon.py`, so it can be nudged without redrawing anything. **A future
-session should not "improve" this into an accurate, thin-lined scales drawing:**
-it will look better at 512px in this file and be gone at 32px in the Dock. If the
-beam cannot hold a weight that still looks balanced at 512px, the instruction is
-to simplify the form further, not to thin it.
+**This replaces the mark this section originally described, and reverses the
+instruction it ended on.** The first version was a blunt silhouette designed for
+32px first -- a thick capsule beam, solid round pan weights on short fat stems, a
+triangle base -- and it closed by telling a future session *not* to turn it into
+"an accurate, thin-lined scales drawing." That instruction is withdrawn, on
+purpose and with the tradeoff priced in below. It was a good rule for a mark
+nobody had drawn; it is the wrong rule once there is a specific drawing to match.
+
+The mark is now the one in **`scales-mark.svg` at the repo root**, which is the
+source of truth for its geometry: a teardrop finial, a vertical post, an arced
+beam (a quadratic from `(24,33)` to `(76,33)` through a control point at
+`(50,24)`), a knob at each beam end, four straight chains, two filled
+semicircular pans of radius 16 sweeping below their chords, a trapezoid plinth,
+and a rounded foot bar. `make_icon.py` **rasterizes those paths itself** -- there
+is no SVG library in this project and adding one for an icon script would be a
+runtime dependency for a build-time convenience. Each element is a
+signed-distance primitive (capsule, butt-capped box, disc, half-disc, polygon)
+and the mark is their union; the two curves are flattened, the beam into 16
+capsules and the finial's cubic flanks into a polygon.
+
+`MARK` at the top of the script still holds every dimension, now in the SVG's own
+100x100 units so the two files can be diffed by eye, plus two placement scalars:
+`svg_inset` (the `scale(0.78)` the SVG already applies) and `fit`, which maps
+that 100-unit box onto 0.75 of the icon's edge. Their product is the only thing
+that sets the mark's size. `fit` is chosen so the mark's half-width lands at
+0.246 of the edge -- **exactly the previous mark's half-width**, so clearance to
+the `--pink-surface` inset (+/-0.32) and to the icon's rounded corner is
+unchanged. Nothing about the background moved.
+
+#### 15.7.2 What it actually looks like at each size, measured
+
+Rendered and inspected at 16/32/64/128/256/512/1024 (previews land in
+`scripts/icon-preview/`, regenerated every run). Ink coverage below is measured
+off the rendered pixels, not estimated: `1.00` is solid `--ink`, `0.50` is a
+half-tone pixel.
+
+| size | px per SVG unit | chain width | beam width | what is actually visible |
+|---|---|---|---|---|
+| 1024 | 5.99 | 17.97px | 26.96px | everything solid; identical to the SVG |
+| 512 | 3.00 | 8.99px | 13.48px | everything solid |
+| 256 | 1.50 | 4.49px | 6.74px | everything solid |
+| 128 | 0.75 | 2.25px | 3.37px | everything solid; the arc still reads as an arc |
+| 64 | 0.37 | 1.12px | 1.68px | all present; chains at 0.94 coverage, faintly grey |
+| 32 | 0.19 | 0.56px | 0.84px | reads as a balance, but half-tone (see below) |
+| 16 | 0.09 | 0.28px | 0.42px | a grey smudge with two darker lobes |
+
+Per feature, the honest version:
+
+- **The beam's arc** is visible and correctly curved down to 128px. At 64px it is
+  a 1.7px line and still visibly arced. At 32px it is 0.84px and renders at
+  0.75 coverage -- present, grey, and its curvature is no longer legible. At 16px
+  it is 0.42px and reads as a smear across the top of the mark.
+- **The pans** are clean semicircles at every size from 64px up. At 32px they are
+  3px in radius and are the only part of the mark still reaching full ink -- they
+  are what makes it read as a balance at all. At 16px they are 1.5px in radius
+  and top out at **0.82 coverage, not solid**; they are the two darkest lobes but
+  they are not black.
+- **The chains** are full ink at 128px and above, 0.94 at 64px, 0.63--0.69 at
+  32px, and at 16px they are gone as distinct strokes -- they merge into the
+  general grey between the beam and the pans.
+- **The finial** reads as a teardrop with a visible cusp down to 128px. At 64px
+  it is a rounded blob with a hint of a point. At 32px and 16px it is a blob.
+- **The post** is the surprise, and it is worth writing down: at 32px it is
+  1.12px wide centred on `size/2`, which is a *pixel boundary*, so it splits into
+  two columns at **0.50 coverage** each and reads lighter than the pans, the
+  plinth and the foot, all of which are solid. The previous mark's post was
+  1.73px and did not have this problem. This is a genuine consequence of the
+  thinner drawing, not a rasterizer bug -- the coverage is correct for a bar that
+  width in that position.
+
+Supersampling is unchanged and is load-bearing: 4x4 below 128px, 2x2 at 256px,
+the SDF's own 1px antialiasing band above that. Without it the chains and the
+beam alias into dashes rather than fading evenly.
+
+#### 15.7.3 The thin chains at small sizes are an accepted tradeoff
+
+**They are not a defect, and a future session should not fix them.** The chains
+are 3 units wide in a 100-unit space. That is sub-pixel at 32px and invisible at
+16px, and it was known and accepted before this mark was drawn. The two ways to
+"fix" it are both rejected:
+
+- **Thickening the chains** would make them heavier than the beam they hang from
+  at 512px and above, where the mark is most often actually looked at. The
+  drawing would be wrong everywhere in order to be legible in one place.
+- **Dropping the chains** would leave two pans floating under a beam, which is
+  the previous mark, which is what this replaced.
+
+What holds the mark together at small sizes is that the pans, plinth and foot are
+solid fills, so the silhouette survives even when every stroke has gone grey. The
+32px and 16px renders above are the price, in full, and the design target has
+moved: this mark is drawn to be correct at 128px and up, and to remain
+*recognisable* -- not crisp -- below that. **If a future session wants the Dock
+icon sharper at 32px, the answer is a separate simplified mark selected by size,
+not a thicker version of this one.** Do not edit `scales-mark.svg` or `MARK` to
+chase small-size crispness.
 
 ---
 
