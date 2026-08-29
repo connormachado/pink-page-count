@@ -460,8 +460,8 @@ AppIcon.icns            the Desktop launcher's icon, applied by hand via
                         Finder -> Get Info (Phase 4)
 scripts/
   make_icon.py          regenerates AppIcon.icns from the --pink-hot /
-                        --pink-surface tokens. stdlib only (struct + zlib);
-                        no new dependency
+                        --pink-surface / --ink tokens, incl. the scales mark
+                        (15.7). stdlib only (struct + zlib); no new dependency
 app/
   config.py             paths, port, env var names
   daytime.py            day_key() + ISO parse/format
@@ -1500,6 +1500,36 @@ interpreter first.
 
 Both are deliberately out of this session's scope and neither is started.
 
+### 15.7 The app icon carries a scales-of-justice mark
+
+`AppIcon.icns` is still the Phase 2 icon -- the `--pink-hot` (`#FF2E88`) rounded
+square with the `--pink-surface` (`#FFE8F0`) inset, both frozen tokens (9.1),
+unchanged in shape, colour and proportion. Added centred on it: a solid
+scales-of-justice mark in **`--ink` (`#2B1A22`)** -- the third and only other hex
+literal `scripts/make_icon.py` mirrors from `tokens.css`, chosen because it is
+the repo's designated high-contrast-on-a-light-surface colour and clears the mark
+against the inset with room to spare. `--pink-hot` was not used: 9.1 reserves it
+for the primary numeral, and this honours that.
+
+**The mark is designed for 32px first.** It is viewed in the Dock at that size far
+more than at any other, and a literal drawing of a balance dissolves there -- the
+beam and the two suspension lines go sub-pixel and vanish, leaving two floating
+pans over a post. So the form is deliberately blunt: one filled silhouette, no
+strokes, no gradients, no inner detail; a **thick capsule beam**, round **solid
+pan weights** on short fat stems rather than open pans on thin lines, a central
+post, and a **solid triangle + foot bar** for the base. It was rendered and
+inspected at 16/32/64/128/256/512/1024 (previews land in `scripts/icon-preview/`,
+regenerated every run). At 32px the beam, stems and pans are all present and
+correctly weighted; at 16px the beam and pans survive as a legible mass while the
+stems drop out -- acceptable, because 32px is the design target and 16px still
+reads as a balance and nothing else.
+
+Every dimension of the mark is a fraction-of-size constant in `MARK` at the top
+of `make_icon.py`, so it can be nudged without redrawing anything. **A future
+session should not "improve" this into an accurate, thin-lined scales drawing:**
+it will look better at 512px in this file and be gone at 32px in the Dock. If the
+beam cannot hold a weight that still looks balanced at 512px, the instruction is
+to simplify the form further, not to thin it.
 
 ---
 

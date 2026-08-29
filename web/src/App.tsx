@@ -172,7 +172,7 @@ export default function App() {
         <div className="rounded-2xl border border-[var(--pink-edge)] bg-[var(--pink-surface)] p-6 text-center">
           <p className="text-[var(--ink)]">The reading tracker isn't running right now.</p>
           <p className="mt-2 text-sm text-[var(--rose-muted)]">
-            Start it by double-clicking <code>run.command</code> in the project folder, then
+            Open <code>Pink Page Count</code> from your Applications folder or the Dock, then
             reload this page. Nothing you've logged has gone anywhere.
           </p>
           <button
