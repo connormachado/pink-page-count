@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app import config  # noqa: E402
 from app.classes import ClassStore  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.quotes import QuoteSource  # noqa: E402
@@ -20,6 +21,33 @@ from app.settings import SettingsStore  # noqa: E402
 from app.storage import Storage  # noqa: E402
 
 TEST_TZ = "America/New_York"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def guard_real_application_support():
+    """Fails the run loudly if any test resolves a path under the real
+    Application Support directory (DECISIONS.md 14).
+
+    Every fixture above routes storage through `tmp_path` instead (3.7); this
+    is the backstop for a future test -- or a future default argument -- that
+    forgets to and falls through to `config.DATA_ROOT` for real.
+    """
+    real_root = config.DATA_ROOT
+    pre_existing = set(real_root.iterdir()) if real_root.exists() else None
+    yield
+    if pre_existing is None:
+        if real_root.exists():
+            pytest.fail(
+                f"A test created {real_root} -- something resolved the real "
+                "Application Support path instead of an env override or an "
+                "explicit tmp_path fixture. See DECISIONS.md 14."
+            )
+    elif set(real_root.iterdir()) != pre_existing:
+        pytest.fail(
+            f"A test wrote inside {real_root} -- something resolved the real "
+            "Application Support path instead of an env override or an "
+            "explicit tmp_path fixture. See DECISIONS.md 14."
+        )
 
 
 @pytest.fixture(autouse=True)
@@ -71,6 +99,14 @@ def quotes_file(tmp_path: Path) -> Path:
     """A quote file under tmp_path. Deliberately NOT created -- a test that wants
     content writes it. No test ever reads the repo's real quotes.txt."""
     return tmp_path / "quotes.txt"
+
+
+@pytest.fixture
+def user_quotes_file(tmp_path: Path) -> Path:
+    """The user's optional quote file under tmp_path. Deliberately NOT created --
+    same reasoning as quotes_file above. No test ever reads or writes the real
+    my-quotes.txt under Application Support."""
+    return tmp_path / "my-quotes.txt"
 
 
 @pytest.fixture
