@@ -10,3 +10,8 @@ server.log
 # Front end (Phase 2). web/dist is committed as of Phase 4 -- FastAPI serves it.
 web/node_modules/
 web/*.tsbuildinfo
+
+# Frozen bundle output (DECISIONS.md 15). Anchored with a leading slash so these
+# never match the tracked web/dist.
+/packaging/dist/
+/packaging/build/

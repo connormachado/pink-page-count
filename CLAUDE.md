@@ -32,4 +32,5 @@ invoke through .venv/bin/python.
 ./run.command                 start the server
 .venv/bin/python -m pytest    backend tests
 cd web && npm run dev         front end, dev server with /api proxy
+packaging/build_app.sh        the frozen .app bundle (DECISIONS.md 15)
 ```
