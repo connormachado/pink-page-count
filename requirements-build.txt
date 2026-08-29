@@ -1,0 +1,7 @@
+# Build-time dependencies for the frozen .app bundle (DECISIONS.md 15).
+#
+# NOT a runtime dependency: nothing in app/ imports PyInstaller, and the shipped
+# bundle does not contain it. requirements.txt stays the two-line runtime list it
+# has always been, so run.command still installs the minimum.
+-r requirements.txt
+pyinstaller>=6.22

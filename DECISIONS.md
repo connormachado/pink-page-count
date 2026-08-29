@@ -451,6 +451,8 @@ DECISIONS.md            this file
 README.md
 requirements.txt        runtime only: fastapi, uvicorn
 requirements-dev.txt    pytest, httpx
+requirements-build.txt  pyinstaller. BUILD-time only -- nothing in app/
+                        imports it and it is not in the shipped bundle (15.4)
 run.command             double-clickable launcher
 update.command          pulls new code; never touches a dirty tree, never
                         starts or stops the server (Phase 4, 5.2)
@@ -474,6 +476,17 @@ app/
   quotes.py             quotes.txt + my-quotes.txt -> today's quote. Imports
                         no storage, no config (10, 10.1.1)
   main.py               FastAPI app, routes, error handlers
+  launcher.py           the frozen bundle's entry point (15.2). Starts the
+                        server in-process -- never the uvicorn CLI -- so
+                        config.HOST is the one authority on the bind
+packaging/              the frozen macOS bundle (15). Not used by any dev
+                        run; run.command does not know it exists
+  entry.py              PyInstaller's entry script; a stub over app.launcher
+  PinkPageCount.spec    the spec: datas, hidden imports, BUNDLE/Info.plist
+  build_app.sh          THE build command. Rebuilds web/dist first, or
+                        refuses if it is stale (15.4)
+  dist/, build/         PyInstaller output. Gitignored, anchored with a
+                        leading slash so they never match web/dist
 tests/
 web/                    the front end (Phase 2). Vite + React + TypeScript,
                         Tailwind v4; no component library, router, or state
@@ -1108,11 +1121,34 @@ a read-only resource, so this splits `REPO_ROOT` into two.
 
 **`RESOURCE_ROOT`** — read-only, ships with the app: `quotes.txt`, `web/dist`.
 Unfrozen (every dev run, and every test run), it is the repo root, unchanged
-from before this split. Frozen (`sys.frozen` with `sys._MEIPASS` set, as a
-PyInstaller onefile build does), it is the bundle's extracted resource
-directory. **The exact resolution for a onedir/`.app` build is not settled —
-see the open problem below.** No PyInstaller machinery exists yet (AUDIT.md
-B6); that is the next session's work, and this split does not attempt it.
+from before this split. Frozen, it is `sys._MEIPASS`.
+
+**Amended: the onedir/`.app` resolution is now settled, and it is
+`sys._MEIPASS`.** The earlier text here said it was not — that was written
+before any bundle existed (AUDIT.md B6). Section 15 built one, and the value
+was read out of a running instance rather than reasoned about:
+
+```
+frozen:    True
+resources: /Applications/Pink Page Count.app/Contents/Frameworks
+quotes:    /Applications/Pink Page Count.app/Contents/Frameworks/quotes.txt
+dist:      /Applications/Pink Page Count.app/Contents/Frameworks/web/dist
+data:      ~/Library/Application Support/PinkPageCount
+```
+
+PyInstaller 6 sets `sys._MEIPASS` to `Contents/Frameworks` for a onedir `.app`,
+puts the actual data files in `Contents/Resources`, and symlinks each top-level
+entry from `Frameworks` back into `Resources`. So `RESOURCE_ROOT/quotes.txt`
+and `RESOURCE_ROOT/web/dist` both resolve through a symlink and open normally.
+Both were confirmed reachable from inside the bundle: `GET /api/quote` returns a
+real quote, and `/`, `/assets/*.js`, `/assets/*.css` and
+`/fonts/fraunces-latin-var.woff2` all return `200` with their full byte counts.
+
+**`app/config.py` needed no change to make this work** — the `sys.frozen` /
+`sys._MEIPASS` branch written in this section already resolves correctly for
+onedir. The `Path(sys.executable).resolve().parent` fallback beside it is
+therefore dead code on this build path; it is left in place as the answer for a
+frozen build that somehow sets no `_MEIPASS`, and nothing depends on it.
 
 **`DATA_ROOT`** — writable, owned by the user, survives an app replacement:
 `entries.json`, `classes.json`, `settings.json`, `my-quotes.txt` (10.1.1).
@@ -1154,3 +1190,213 @@ non-technical recipient cannot navigate to without knowing Cmd+Shift+. or
 explicitly left for the next session, alongside the PyInstaller build
 machinery (B6) that has to exist before any of this can be verified on a
 recipient's actual machine.
+
+**Update: B6 now exists (section 15), and this problem is confirmed, not
+theoretical.** A corrupt `entries.json` was placed inside a bundle's real
+`DATA_ROOT` and the frozen app was launched: it exits `2`, leaves the file
+byte-for-byte untouched, and prints the full banner — whose remedy line reads
+`mv '~/Library/Application Support/PinkPageCount/entries.json' '….bak'`. Every
+word of §3.4's promise holds in the bundle. The banner is simply written to
+`stderr`, and a Finder-launched `.app` has nothing attached to that descriptor,
+so the recipient sees an icon that bounces once and stops. Still open.
+
+---
+
+## 15. The frozen macOS bundle
+
+AUDIT.md B6 — "there is no PyInstaller machinery in the repo" — is closed by
+this section. `packaging/build_app.sh` produces
+`packaging/dist/Pink Page Count.app`, an unsigned onedir bundle that launches by
+double-click on a Mac with no Python and no checkout.
+
+This is **build machinery, not a sixth phase.** No schema, no storage
+semantics, no endpoint, and no user-visible behavior changed. `app/` gained
+exactly one module (`app/launcher.py`, the entry point) and nothing existing was
+edited. CLAUDE.md's "5 phases" still stands, the same way section 14 sat outside
+the phase count.
+
+App name **Pink Page Count**, bundle identifier
+**`com.connormachado.pinkpagecount`**, icon `AppIcon.icns` (6).
+
+### 15.1 onedir, not onefile
+
+A onefile bundle unpacks itself into a `sys._MEIPASS` temp directory that is
+**deleted when the process exits.** That directory is the exact mechanism behind
+AUDIT.md B1's data-loss case, and every launch pays the unpack cost again.
+
+onedir has neither property: the resources sit in the bundle and stay there.
+Given that durability of the reading log is this project's top priority
+(section 3's header), a packaging format whose defining behavior is "a directory
+that disappears" is not one to build a reading log on top of, even now that
+`DATA_ROOT` (14) means the log would not actually land there.
+
+### 15.2 The entry point is `app/launcher.py`, and it does not shell out
+
+`run.command:107` starts the server through the **uvicorn CLI**, passing a
+literal `--host 127.0.0.1`. AUDIT.md's binding note records the consequence:
+at real launch time the binding actually enforced there is that literal, not
+`config.HOST` — two independent places, both loopback, but two.
+
+The frozen app has no command line, so it goes through `uvicorn.Config(...)`
+in-process and `config.HOST` is the single authority. **`app/launcher.py:119`
+(`host=config.HOST`, inside the `uvicorn.Config(...)` call) is the line that
+binds the socket in the frozen build**, and `app/config.py:21`
+(`HOST = "127.0.0.1"`) is the only value that can reach it. Confirmed against a
+running bundle: one listening socket, `TCP 127.0.0.1:8420 (LISTEN)`, nothing on
+`0.0.0.0` and nothing on any other interface.
+
+The app is handed to uvicorn as a **callable**, not as the string
+`"app.main:create_default_app"`. A string goes through
+`uvicorn.importer.import_from_string`, which is precisely the import-by-name
+PyInstaller cannot trace (15.3); a function object is an ordinary import the
+freeze already followed.
+
+The launcher polls `/api/health` — not merely the socket — before opening the
+browser, so it opens only once the app is genuinely serving. It then blocks in
+`server.run()` on the main thread, which is what lets uvicorn install its own
+signal handlers (15.5).
+
+### 15.3 Hidden imports, and why each one is there
+
+uvicorn resolves its protocol, loop and lifespan classes from **strings** in
+`uvicorn.config` via `import_from_string`. PyInstaller's static analysis cannot
+follow a string, so the naive freeze builds cleanly and dies at startup on a
+machine without the dev venv — AUDIT.md B6's stated failure mode.
+
+The list in `packaging/PinkPageCount.spec` was not copied from anywhere. It is
+the set of modules the exact `uvicorn.Config` in `app/launcher.py` actually
+imports, obtained by diffing `sys.modules` across `Config.load()` and
+`Config.get_loop_factory()`. Because `requirements.txt` is just fastapi +
+uvicorn — no `uvloop`, no `httptools`, no `websockets`, no `wsproto` — the three
+`auto` resolvers settle deterministically:
+
+| Setting | `auto` resolves to | Because |
+|---|---|---|
+| loop | `uvicorn.loops.asyncio` | `uvloop` is not installed |
+| http | `uvicorn.protocols.http.h11_impl` | `httptools` is not installed |
+| ws | `None` | neither `websockets` nor `wsproto` is installed |
+| lifespan | `uvicorn.lifespan.on` | `auto` means `on` |
+
+| Hidden import | Why |
+|---|---|
+| `uvicorn.loops.auto` | the entry point that picks a loop; imported by name |
+| `uvicorn.protocols.http.auto` | same, for the HTTP protocol |
+| `uvicorn.protocols.websockets.auto` | same, for websockets — still imported even though it returns `None` |
+| `uvicorn.loops.asyncio` | what loop `auto` lands on here |
+| `uvicorn.protocols.http.h11_impl` | what http `auto` lands on here |
+| `uvicorn.protocols.http.flow_control` | imported by `h11_impl` |
+| `uvicorn.protocols.utils` | shared by the protocol implementations |
+| `uvicorn.lifespan.on` | what lifespan `auto` lands on |
+
+The impl modules for the *absent* options are deliberately **not** listed: they
+cannot be reached, and naming them would only bloat the bundle and raise
+missing-module warnings for libraries this project does not depend on.
+
+`h11` is also deliberately absent: `h11_impl` reaches it with an ordinary
+`import h11`, so tracing follows it once that module is named. Same for `click`,
+which `uvicorn/__init__.py` imports statically through `uvicorn.main`.
+
+hooks-contrib ships a `hook-uvicorn.py` doing a blanket
+`collect_submodules('uvicorn')` that would happen to cover all of this. The
+explicit list is still the contract — this build must not silently depend on
+that hook continuing to exist, or on its behavior not changing.
+
+**Datas.** `quotes.txt` → `RESOURCE_ROOT/quotes.txt`, `web/dist` →
+`RESOURCE_ROOT/web/dist`, which is exactly what `config.DEFAULT_QUOTES_FILE` and
+`config.DEFAULT_DIST_DIR` already ask for, so no frozen-only special case exists
+anywhere in `app/`. Nothing writable is bundled. See 14 for the resolved layout.
+
+### 15.4 The build script rebuilds the front end, or refuses
+
+`packaging/build_app.sh` is the one command. It rebuilds `web/dist` with
+`npm run build` first. If npm is unavailable it falls back to comparing mtimes
+and **fails loudly** when anything under `web/src`, `web/public`,
+`web/index.html`, `web/package.json`, `web/vite.config.ts` or `web/tsconfig.json`
+is newer than `web/dist/index.html`.
+
+Shipping a bundle wrapped around a stale front end is the failure this guards:
+`web/dist` is committed (6), so it is always *present* and a stale one produces
+a bundle that works, looks right, and is a version behind — which nobody notices
+until a recipient reports a bug that was fixed weeks ago.
+
+It then asserts that `index.html`, `assets/*.js`, `assets/*.css`,
+`fonts/*.woff2` and `quotes.txt` all exist before freezing. That check is not
+belt-and-braces: `app/main.py` adds the `/assets` and `/fonts` mounts **only if
+the directory exists and skips them silently otherwise**, so a bundle missing
+the vendored font (9.4) renders in a fallback face with nothing anywhere saying
+so. Verified positively rather than by eye — inside a running bundle,
+`/fonts/fraunces-latin-var.woff2` returns `200` and 67,388 bytes, and the built
+CSS does reference `url(/fonts/fraunces-latin-var.woff2)`.
+
+PyInstaller is a **build** dependency and lives in `requirements-build.txt`, not
+`requirements.txt`. Nothing in `app/` imports it and the shipped bundle does not
+contain it, so `run.command` still installs the two-line runtime list it always
+has.
+
+```
+packaging/build_app.sh          # the whole release build
+```
+
+### 15.5 What is verified, and what is still broken
+
+Verified against a real bundle, with the dev venv deactivated and the
+environment stripped to `env -i` (so neither the venv nor any system Python is
+on `PATH`):
+
+- Launches from `/Applications` by double-click (LaunchServices `open`).
+- Launches from a path containing a space **and** an apostrophe
+  (`…/Connor's Test Folder/it's here/Pink Page Count.app`).
+- Serves the whole front end: `/`, the JS and CSS bundles, and the font, all
+  `200` with full byte counts. Every `/api/*` route answers.
+- Data lands in `DATA_ROOT` (14) — `entries.json`, `classes.json`,
+  `settings.json`, `my-quotes.txt`. A `POST /api/entries` returned `201` and
+  persisted there.
+- **Nothing is written inside the `.app`.** Every file in the bundle is
+  byte-for-byte identical after a full session including a write.
+- Binds `127.0.0.1` only (15.2).
+- `SIGINT` exits `0` and `SIGTERM` exits `143`; both release the port with no
+  orphan process left behind.
+
+**Still broken, and now reproducible in the bundle:**
+
+- **The user has no way to quit it (new, and the most serious).** Neither
+  `console=False` nor the `.app` wrapper makes this a GUI application — nothing
+  calls into AppKit, so the process never registers with the window server. A
+  running instance appears in System Events as neither an application process
+  nor a background-only one. **There is no Dock icon and no menu bar**, the Quit
+  AppleEvent that Cmd-Q and Dock > Quit send is never received, and the server
+  keeps running after the browser tab is closed. Shutdown is clean whenever a
+  signal arrives; nothing in the shipped app lets the user send one. Fixing it
+  means either a real Cocoa event loop (a new runtime dependency — CLAUDE.md
+  says ask first) or a visible quit affordance in the UI.
+- **B3** — the corrupt-file halt. The banner still renders correctly and exits
+  `2` with the file untouched, but goes to `stderr`, which a Finder-launched
+  `.app` has nothing attached to. See 14.2.
+- **B4** — a failed write is still a bare `500` the UI reports as "the reading
+  tracker isn't running right now".
+- **B5** — `update.command` still cannot work in a bundle; there is no `.git`.
+  Nothing in this section ships it, and the bundle has no update story at all.
+- **S1, S2, S3, S6** — `run.command` / `update.command` issues. Untouched. They
+  do not affect the bundle, which does not use either script.
+- **Port already taken.** Deliberately not fixed. uvicorn exits `3` in about a
+  second after logging `[Errno 48] … address already in use` to `stderr` — so
+  from Finder the recipient sees an icon bounce once and vanish, with no browser
+  and no message. Note the second-launch case this creates: while an instance is
+  already running, double-clicking the app again does *nothing visible at all*.
+  `run.command` already solves this with a pre-flight `/api/health` check (5.2);
+  the bundle has no equivalent yet.
+
+### 15.6 Not signed, not notarized, and Apple-silicon only
+
+The bundle is unsigned and un-notarized. On another Mac it arrives quarantined
+and Gatekeeper refuses it outright — AUDIT.md S7, unchanged and now the single
+biggest obstacle to actually handing this to five people. A recipient can
+right-click > Open as a workaround; that is not a distribution plan.
+
+It is also **arm64 only**, because the Python that builds it is
+(`target_arch=None` means host architecture). A recipient on an Intel Mac cannot
+run this bundle at all. A universal2 build needs a universal2 Python
+interpreter first.
+
+Both are deliberately out of this session's scope and neither is started.
+
