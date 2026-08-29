@@ -5,8 +5,8 @@ instead of redesigning the schema.** If you need to change something here, chang
 *this file* in the same commit and say why.
 
 Project shape: single user, single machine, macOS, fully offline. No auth, no
-multi-user, no cloud, no database. **Durability of `data/entries.json` matters more
-than anything else in this project.**
+multi-user, no cloud, no database. **Durability of the reading log
+(`entries.json`) matters more than anything else in this project.**
 
 Status: Phase 5 of 5 — settings and themes. A third data file,
 `data/settings.json`, holds theme choice, custom theme overrides, and the default
@@ -411,14 +411,21 @@ grow.
 
 ### 5.1 Environment variables
 
+Defaults below use `RESOURCE_ROOT` and `DATA_ROOT` as defined in section 14 --
+identically in dev and frozen. A value given through the env var is resolved
+to an absolute path (`.expanduser().resolve()`) regardless of which default it
+replaces.
+
 | Var | Default | Meaning |
 |---|---|---|
 | `PAGECOUNT_PORT` | `8420` | port to bind |
-| `PAGECOUNT_DATA_FILE` | `data/entries.json` | entry data file path |
-| `PAGECOUNT_CLASSES_FILE` | `data/classes.json` | class data file path (section 12) |
-| `PAGECOUNT_SETTINGS_FILE` | `data/settings.json` | settings data file path (section 13) |
-| `PAGECOUNT_QUOTES_FILE` | `quotes.txt` | quote file path (section 10) |
-| `PAGECOUNT_DIST_DIR` | `web/dist` | built front end path (section 5) |
+| `PAGECOUNT_DATA_FILE` | `DATA_ROOT/entries.json` | entry data file path |
+| `PAGECOUNT_CLASSES_FILE` | `DATA_ROOT/classes.json` | class data file path (section 12) |
+| `PAGECOUNT_SETTINGS_FILE` | `DATA_ROOT/settings.json` | settings data file path (section 13) |
+| `PAGECOUNT_QUOTES_FILE` | `RESOURCE_ROOT/quotes.txt` | bundled quote file path (section 10) |
+| `PAGECOUNT_DIST_DIR` | `RESOURCE_ROOT/web/dist` | built front end path (section 5) |
+
+`DATA_ROOT/my-quotes.txt` (10.1.1) has no env override -- see section 14.
 
 ### 5.2 `run.command` and `update.command`
 
@@ -464,7 +471,8 @@ app/
                         Imports no storage, no classes
   models.py             pydantic request/response models
   stats.py              pages_today, streaks, first_entry_date
-  quotes.py             quotes.txt -> today's quote. Imports no storage (10)
+  quotes.py             quotes.txt + my-quotes.txt -> today's quote. Imports
+                        no storage, no config (10, 10.1.1)
   main.py               FastAPI app, routes, error handlers
 tests/
 web/                    the front end (Phase 2). Vite + React + TypeScript,
@@ -492,11 +500,22 @@ web/                    the front end (Phase 2). Vite + React + TypeScript,
                         mounts ThemeEditor (13)
     ThemeEditor.tsx     preset picker, custom color inputs, contrast
                         warnings, the reset-to-preset escape hatch (13.3)
-quotes.txt              the quotes, one per line. Source, not entry data (10)
-data/
-  entries.json          the reading log (gitignored)
-  classes.json          the classes (gitignored)
-  settings.json         theme, custom_theme, default_chip (gitignored, 13)
+quotes.txt              the canonical quotes, one per line. Source, not entry
+                        data (10) -- and, as of section 14, a read-only
+                        resource: this file ships inside RESOURCE_ROOT and is
+                        replaced on every update, not user-editable.
+```
+
+None of the three data files or `my-quotes.txt` live in this tree at all (section
+14). They are not repo-relative and there is no `data/` directory in a fresh
+checkout:
+
+```
+~/Library/Application Support/PinkPageCount/     DATA_ROOT
+  entries.json          the reading log
+  classes.json          the classes
+  settings.json         theme, custom_theme, default_chip
+  my-quotes.txt         the user's own quotes, unioned with quotes.txt (10.1.1)
 ```
 
 `requirements.txt` holds runtime dependencies only, so `run.command` installs the
@@ -699,6 +718,33 @@ This mirrors §3: the reading log is the thing this project protects. A feature 
 
 Quotes are **source** and tracked in git; entries are **personal data** and gitignored.
 That difference is why they are two files.
+
+### 10.1.1 Amendment: a second, optional quote file, unioned at read time
+
+Ahead of distributing this app to people outside the developer's household as a
+frozen bundle (AUDIT.md), `quotes.txt` moves inside the read-only bundle
+(`RESOURCE_ROOT`, section 14) so it can be replaced cleanly on every update. That
+makes it **no longer user-editable** — a real change from "a file she owns,"
+which is why this is a numbered amendment and not a silent edit.
+
+To keep quotes user-editable at all, a second file is added:
+`DATA_ROOT/my-quotes.txt` (section 14) — optional, user-owned, survives an app
+update the same way `entries.json` does. `QuoteSource` now takes both paths and
+reads both **on every request**, same as before (10.4): bundled lines first,
+then the user's own, blank lines and exact duplicates dropped, order otherwise
+preserved. A missing `my-quotes.txt` is normal, never an error — same rule 10.4
+already gives a missing `quotes.txt`.
+
+The file is created empty-of-quotes (comment lines only, explaining itself) on
+first run, the same "not an error, not a migration" spirit as 3.3's first write
+of a missing data file — except this one is never required for the app to
+function, so a failed write (e.g. a read-only volume) is silently skipped rather
+than halting anything.
+
+`app/quotes.py`'s isolation from the reading log (10.1) is unchanged: both paths
+are handed in by the caller, and the module still never imports `config` or
+`storage` and never names `entries.json` — enforced by the same
+`tests/test_quotes.py` AST check as before.
 
 ### 10.2 Format
 
@@ -1044,3 +1090,67 @@ selected on load" and nothing more.
 
 Same collapsed `<details>` pattern as the class manager (12.4), beside it, closed
 by default, off any save path. No router -- §6 still says no router.
+
+---
+
+## 14. Distribution: two path bases, not one
+
+AUDIT.md (read-only audit ahead of distributing this app to ~5 people outside
+the developer's household, as a frozen macOS app bundle) found that every
+default path in `app/config.py` was derived from `__file__` via one
+`REPO_ROOT` — correct for a git checkout, and wrong for a frozen bundle two
+different ways at once (AUDIT.md B1, B2): a PyInstaller onefile bundle's
+`__file__` points inside a temp directory deleted on quit (silent data loss,
+every launch), and a onedir/`.app` bundle's `__file__` points inside the
+bundle itself (the log gets stranded inside an app the user will eventually
+replace). There is no single base that is correct for both a writable log and
+a read-only resource, so this splits `REPO_ROOT` into two.
+
+**`RESOURCE_ROOT`** — read-only, ships with the app: `quotes.txt`, `web/dist`.
+Unfrozen (every dev run, and every test run), it is the repo root, unchanged
+from before this split. Frozen (`sys.frozen` with `sys._MEIPASS` set, as a
+PyInstaller onefile build does), it is the bundle's extracted resource
+directory. **The exact resolution for a onedir/`.app` build is not settled —
+see the open problem below.** No PyInstaller machinery exists yet (AUDIT.md
+B6); that is the next session's work, and this split does not attempt it.
+
+**`DATA_ROOT`** — writable, owned by the user, survives an app replacement:
+`entries.json`, `classes.json`, `settings.json`, `my-quotes.txt` (10.1.1).
+Always `~/Library/Application Support/PinkPageCount/` — **identically in dev
+and frozen, one code path, no branch for development.** Given that durability
+of the reading log is this project's top priority (section 3's header), the
+one thing worse than "this session doesn't special-case dev" would be a dev
+path that silently diverges from what actually gets tested. Directory name is
+exactly `PinkPageCount`: no spaces, no apostrophes, so it never needs quoting
+in a shell command or a `mv` remedy (AUDIT.md B3's note on the banner's
+`mv '<path>' '<path>.bak'`).
+
+The five existing `PAGECOUNT_*` path/dir env overrides (`DATA_FILE`,
+`CLASSES_FILE`, `SETTINGS_FILE`, `QUOTES_FILE`, `DIST_DIR`) are unchanged in
+what they override, and now additionally apply `.resolve()` after
+`.expanduser()`, so a relative value can never silently create a second file
+next to whatever the working directory happened to be (AUDIT.md's env-override
+note). `DATA_ROOT` itself has no env override — nothing needs one, since every
+test constructs its stores directly against a `tmp_path` fixture rather than
+going through `config` at all (3.7), the same pattern this section's own test
+guard (`tests/conftest.py::guard_real_application_support`) exists to enforce
+for the future.
+
+### 14.1 No migration path exists, by design
+
+Nothing in this codebase finds or copies an old `data/` directory into
+`DATA_ROOT`. Every recipient of the frozen build is a first install; the one
+person with an existing `data/entries.json` (the developer) moves it by hand.
+A missing `DATA_ROOT` is not a migration to run — it is the ordinary
+missing-file case section 3.3 already handles, and the app creates fresh files
+exactly as it does today.
+
+### 14.2 Open problem: `DATA_ROOT` lives under a Finder-hidden directory
+
+`~/Library` is hidden in Finder by default. AUDIT.md B3 already flags that the
+corrupt-file halt's remedy (`mv '<path>' '<path>.bak'`) names a path a
+non-technical recipient cannot navigate to without knowing Cmd+Shift+. or
+`~/Library`'s existence at all. This section does not solve that — it is
+explicitly left for the next session, alongside the PyInstaller build
+machinery (B6) that has to exist before any of this can be verified on a
+recipient's actual machine.

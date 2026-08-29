@@ -16,7 +16,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from app import quotes as quotes_module
-from app.quotes import FALLBACK, QuoteSource, quote_index
+from app.quotes import FALLBACK, QuoteSource, ensure_user_quotes_file, quote_index
 
 SAMPLE = ["first quote", "second quote", "third quote", "fourth quote"]
 
@@ -131,6 +131,105 @@ def test_editing_the_file_shows_up_without_a_restart(client, quotes_file: Path):
 def test_response_carries_the_quote_and_nothing_else(client, quotes_file: Path):
     write_quotes(quotes_file, SAMPLE)
     assert set(client.get("/api/quote").json()) == {"quote"}
+
+
+# -- the union with the user's own file, DECISIONS.md 10.1 amended ------ #
+
+
+def test_bundled_only_when_user_file_absent(quotes_file: Path, user_quotes_file: Path):
+    write_quotes(quotes_file, SAMPLE)
+    assert not user_quotes_file.exists()
+    source = QuoteSource(quotes_file, user_quotes_file)
+    assert source.load() == SAMPLE
+
+
+def test_bundled_and_user_lines_are_unioned_bundled_first(
+    quotes_file: Path, user_quotes_file: Path
+):
+    write_quotes(quotes_file, ["bundled one", "bundled two"])
+    write_quotes(user_quotes_file, ["my own quote"])
+    source = QuoteSource(quotes_file, user_quotes_file)
+    assert source.load() == ["bundled one", "bundled two", "my own quote"]
+
+
+def test_exact_duplicates_between_bundled_and_user_are_dropped(
+    quotes_file: Path, user_quotes_file: Path
+):
+    write_quotes(quotes_file, ["shared quote", "bundled only"])
+    write_quotes(user_quotes_file, ["shared quote", "user only"])
+    source = QuoteSource(quotes_file, user_quotes_file)
+    assert source.load() == ["shared quote", "bundled only", "user only"]
+
+
+def test_blank_lines_and_comments_in_user_file_are_ignored(
+    quotes_file: Path, user_quotes_file: Path
+):
+    write_quotes(quotes_file, ["bundled quote"])
+    write_quotes(user_quotes_file, ["# a comment", "", "   ", "my quote"])
+    source = QuoteSource(quotes_file, user_quotes_file)
+    assert source.load() == ["bundled quote", "my quote"]
+
+
+def test_missing_user_file_is_normal_not_an_error(quotes_file: Path, user_quotes_file: Path):
+    write_quotes(quotes_file, SAMPLE)
+    assert not user_quotes_file.exists()
+    assert QuoteSource(quotes_file, user_quotes_file).for_day(date(2026, 8, 24)) in SAMPLE
+
+
+def test_unreadable_user_file_falls_back_to_bundled_only(
+    quotes_file: Path, user_quotes_file: Path
+):
+    write_quotes(quotes_file, SAMPLE)
+    user_quotes_file.mkdir()  # a directory where a file is expected -> OSError on read
+    source = QuoteSource(quotes_file, user_quotes_file)
+    assert source.load() == SAMPLE
+
+
+def test_user_only_lines_still_work_with_no_bundled_quotes(
+    quotes_file: Path, user_quotes_file: Path
+):
+    assert not quotes_file.exists()
+    write_quotes(user_quotes_file, ["only mine"])
+    source = QuoteSource(quotes_file, user_quotes_file)
+    assert source.load() == ["only mine"]
+
+
+def test_no_user_path_at_all_behaves_exactly_as_before(quotes_file: Path):
+    """The single-argument constructor -- what every other test in this file
+    still uses -- is unaffected by the union feature."""
+    write_quotes(quotes_file, SAMPLE)
+    assert QuoteSource(quotes_file).load() == SAMPLE
+
+
+# -- creating the user's file on first run ------------------------------- #
+
+
+def test_ensure_user_quotes_file_creates_instructions_only(user_quotes_file: Path):
+    assert not user_quotes_file.exists()
+    ensure_user_quotes_file(user_quotes_file)
+    assert user_quotes_file.exists()
+    lines = user_quotes_file.read_text(encoding="utf-8").splitlines()
+    assert all(line.strip() == "" or line.strip().startswith("#") for line in lines)
+    # The freshly created file contributes nothing to the union yet.
+    assert QuoteSource(user_quotes_file).load() == []
+
+
+def test_ensure_user_quotes_file_never_touches_an_existing_one(user_quotes_file: Path):
+    write_quotes(user_quotes_file, ["her own quote, already there"])
+    ensure_user_quotes_file(user_quotes_file)
+    assert user_quotes_file.read_text(encoding="utf-8").splitlines()[0] == (
+        "her own quote, already there"
+    )
+
+
+def test_ensure_user_quotes_file_is_never_an_error_when_unwritable(
+    tmp_path: Path,
+):
+    """A read-only parent directory must not raise -- the invitation simply
+    doesn't appear, same as every other missing-file case in this module."""
+    missing_parent = tmp_path / "does" / "not" / "exist" / "my-quotes.txt"
+    ensure_user_quotes_file(missing_parent)  # must not raise
+    assert not missing_parent.exists()
 
 
 # -- the separation, which is the point --------------------------------- #

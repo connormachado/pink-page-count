@@ -35,7 +35,7 @@ from .models import (
     to_out,
     validate_page_range,
 )
-from .quotes import QuoteSource
+from .quotes import QuoteSource, ensure_user_quotes_file
 from .settings import SettingsStore, load_settings_store_or_exit
 from .stats import compute_stats
 from .storage import Storage, load_storage_or_exit
@@ -105,13 +105,19 @@ def create_app(
 
     `classes` and `settings` are REQUIRED and have no default, unlike `quotes`. A
     default would mean `create_app(storage)` silently opens -- and, if missing,
-    WRITES -- the real data/classes.json or data/settings.json (3.3). quotes.txt is
-    only ever read, so a default there cannot damage anything; a store defaulted into
-    existence would put a test one forgotten argument away from touching real data.
-    Requiring it makes "no test ever touches the real data file" structural rather
-    than a habit.
+    WRITES -- the real classes.json or settings.json (3.3). The bundled quotes.txt
+    is only ever read, and the one write the quotes default can trigger --
+    `my-quotes.txt`'s first-run instructions (10.1, amended) -- touches nothing but
+    that one optional file, so a default here still cannot damage the reading log.
+    A store defaulted into existence would put a test one forgotten argument away
+    from touching real data. Requiring `classes` and `settings` makes "no test
+    ever touches the real data file" structural rather than a habit; passing an
+    explicit `quotes` (as every test does) skips this branch entirely.
     """
-    quotes = quotes or QuoteSource(config.quotes_file())
+    if quotes is None:
+        user_quotes_path = config.user_quotes_file()
+        ensure_user_quotes_file(user_quotes_path)
+        quotes = QuoteSource(config.quotes_file(), user_quotes_path)
     dist_dir = dist_dir or config.dist_dir()
     app = FastAPI(
         title="Reading Tracker",
