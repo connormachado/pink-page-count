@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ServerUnreachable, api } from "./api";
+import { ServerFault, ServerUnreachable, api } from "./api";
 import { BigNumber } from "./components/BigNumber";
 import { Celebration } from "./components/Celebration";
 import { Chips } from "./components/Chips";
@@ -45,6 +45,11 @@ export default function App() {
     null,
   );
   const [unreachable, setUnreachable] = useState(false);
+
+  /** The server answered a *load* with a 5xx: it is running, and it could not
+   * tell us what she has read. Kept apart from `unreachable` because they are
+   * different facts and only one of them means the app is closed. */
+  const [loadFailed, setLoadFailed] = useState(false);
   const [selected, setSelected] = useState<StatKey>("all");
   const [quote, setQuote] = useState(FALLBACK_QUOTE);
   const [confirmation, setConfirmation] = useState<string | null>(null);
@@ -105,8 +110,16 @@ export default function App() {
       // under whatever she's currently looking at (DECISIONS.md 13).
       if (cause === "load") setSelected(chipFromSetting(nextSettings.default_chip));
       setUnreachable(false);
+      setLoadFailed(false);
     } catch (error) {
       if (error instanceof ServerUnreachable) setUnreachable(true);
+      // The server answered and the answer was a failure. Say that, and only
+      // that -- never that it isn't running, which is the thing it demonstrably
+      // is (DECISIONS.md 4.5). A refresh that fails while a page of her reading
+      // is already on screen leaves that page alone: those numbers are still
+      // the last thing the server actually said, and replacing them with an
+      // error would throw away truth to report a failure.
+      else if (error instanceof ServerFault) setLoadFailed(true);
       else throw error;
     }
   }, []);
@@ -174,6 +187,30 @@ export default function App() {
           <p className="mt-2 text-sm text-[var(--rose-muted)]">
             Open <code>Pink Page Count</code> from your Applications folder or the Dock, then
             reload this page. Nothing you've logged has gone anywhere.
+          </p>
+          <button
+            type="button"
+            onClick={() => void refresh("load")}
+            className="mt-4 rounded-full border border-[var(--pink-edge)] bg-[var(--pink-edge)]
+                       px-5 py-2 text-[var(--ink)] transition-colors duration-[var(--dur-ui)]
+                       cursor-pointer hover:bg-[var(--pink-surface)]"
+          >
+            Try again
+          </button>
+        </div>
+      </Shell>
+    );
+  }
+
+  // The server is there and answering; it just could not put a page together.
+  // Only when there is nothing to show instead -- see refresh() above.
+  if (loadFailed && stats === null) {
+    return (
+      <Shell>
+        <div className="rounded-2xl border border-[var(--pink-edge)] bg-[var(--pink-surface)] p-6 text-center">
+          <p className="text-[var(--ink)]">The app is running, but it couldn't load your reading.</p>
+          <p className="mt-2 text-sm text-[var(--rose-muted)]">
+            Nothing you've logged has gone anywhere.
           </p>
           <button
             type="button"

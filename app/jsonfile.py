@@ -1,7 +1,9 @@
-"""The atomic write path and the corrupt-file halt. See DECISIONS.md 3.1-3.4.
+"""The atomic write path and the corrupt-file halt. See DECISIONS.md 3.1-3.5.1.
 
 The whole point of this module: a crash mid-write must never produce a truncated or
-empty data file, and a file this code cannot interpret is never modified.
+empty data file, and a file this code cannot interpret is never modified. And when a
+write cannot happen at all, the caller hears about it -- `DataWriteError`, never a
+silent success and never a bare OSError nobody upstream is expecting (3.5.1).
 
 Both data files go through here. There is **one** implementation, not one per file:
 this is the most safety-critical code in the project, and two copies of it means one
@@ -16,6 +18,35 @@ import os
 import tempfile
 from pathlib import Path
 from typing import Any
+
+
+class DataWriteError(Exception):
+    """A data file could not be written. DECISIONS.md 3.5.1: the inverse case.
+
+    3.5 promises that a request which returned 2xx is a request whose data is
+    already on disk. This is the other half of that promise, and it is the half
+    that used to lie: the write did not land, so the request must not return
+    2xx, and what it returns instead has to say so.
+
+    Raised by `atomic_write_json` for the whole family of reasons a write can
+    fail from outside this program -- a read-only directory, a full disk, a
+    volume that went away mid-write, a path owned by another user. They differ
+    only in the errno, and the errno is a fact for the log, never for the
+    screen (4.5).
+
+    Carries the original OSError as `cause` rather than replacing it: the
+    handler that turns this into a response logs the cause in full, because a
+    failure nobody can diagnose is barely better than one nobody is told about.
+
+    There is deliberately no retry and no second location to write to. A write
+    that cannot land must fail loudly, not land somewhere she will never find.
+    """
+
+    def __init__(self, path: Path, cause: OSError) -> None:
+        self.path = Path(path)
+        self.cause = cause
+        self.errno = getattr(cause, "errno", None)
+        super().__init__(f"{self.path}: {cause}")
 
 
 class CorruptDataFile(Exception):
@@ -124,14 +155,25 @@ def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
     os.replace -> fsync the directory. Readers see either the entire old file or the
     entire new one, never a truncated one. On any failure the temp file is removed,
     so a crashed write leaves no litter beside the real data file.
+
+    Every OSError raised along that path -- from the directory that will not take a
+    temp file, the device with no space left, the volume that went away, the file
+    owned by somebody else -- comes back out as `DataWriteError` (3.5.1). One
+    exception for one situation: the data did not land. The caller does not branch on
+    which errno it was, and neither does the response; only the log does.
     """
     path = Path(path)
     directory = path.parent
-    directory.mkdir(parents=True, exist_ok=True)
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        fd, tmp_name = tempfile.mkstemp(
+            dir=directory, prefix=f".{path.name}.", suffix=".tmp"
+        )
+    except OSError as exc:
+        # Nothing was created, so there is nothing to clean up -- this is the
+        # read-only-directory case, and it fails before the temp file exists.
+        raise DataWriteError(path, exc) from exc
 
-    fd, tmp_name = tempfile.mkstemp(
-        dir=directory, prefix=f".{path.name}.", suffix=".tmp"
-    )
     tmp_path = Path(tmp_name)
     try:
         # Serialize before writing anything, so a serialization error cannot leave a
@@ -142,12 +184,14 @@ def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
             handle.flush()
             _durable_sync(handle.fileno())
         os.replace(tmp_path, path)
-    except BaseException:
+    except BaseException as exc:
         try:
             os.close(fd)
         except OSError:
             pass
         tmp_path.unlink(missing_ok=True)
+        if isinstance(exc, OSError):
+            raise DataWriteError(path, exc) from exc
         raise
     _sync_directory(directory)
 
