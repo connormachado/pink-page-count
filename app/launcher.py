@@ -1,9 +1,14 @@
 """The frozen bundle's entry point. See DECISIONS.md sections 15 and 16.
 
-Probes the port for an instance already running, starts the server *in this
-process* if there is none, waits for the port to answer, opens the browser at
-it, and returns when the server has stopped -- which now happens on its own,
-once the browser tab that was watching it goes away (16.2).
+**The process LaunchServices launches is never the server.** It probes the port
+and then does one small thing and leaves: opens the browser at the instance
+already running, says the port is taken, or hands the server to a detached child
+and exits. DECISIONS.md 16.5 is the whole argument; the short version is that a
+`.app` whose launched process stays alive is an app LaunchServices considers
+*running*, and a second double-click on a running app is not a launch at all --
+it is a reopen AppleEvent delivered to a process that has no AppKit event loop to
+receive it. No second process is created, so the probe below never runs. Exiting
+promptly is what keeps every double-click an actual launch.
 
 **This module never invokes the uvicorn CLI.** `run.command:107` passes a
 literal `--host 127.0.0.1` on the command line, which means that at real launch
@@ -51,6 +56,16 @@ POLL_INTERVAL_SECONDS = 0.1
 # 15.5): the situation is identical, so the code should be too. What changed is
 # that it is no longer silent (16.1).
 EXIT_PORT_TAKEN = 3
+
+# Set on the detached child to tell it that it *is* the server, so it skips the
+# probe and serves. DECISIONS.md 16.5.
+#
+# Deliberately not in `app/config.py` alongside PAGECOUNT_PORT and the four path
+# overrides: those are documented knobs a person may set (5.1), and this is
+# private plumbing between a parent process and the child it just spawned. It is
+# still honoured if someone sets it by hand, which is exactly how the frozen
+# server is run in the foreground for a terminal session -- see 16.5.
+SERVE_ENV = "PAGECOUNT_SERVE"
 
 
 def _emit(line: str) -> None:
@@ -105,6 +120,56 @@ def _emit_error(text: str) -> None:
         pass
 
 
+def _server_argv() -> list[str]:
+    """The command line that runs this same program as the server.
+
+    Frozen, `sys.executable` *is* the bundle's own executable
+    (`Pink Page Count.app/Contents/MacOS/Pink Page Count`), so re-running it is
+    re-running this file. onedir (15.1) makes that cheap: there is no archive to
+    unpack, the child maps the same already-warm dylibs, and it is the identical
+    binary rather than a second copy of anything.
+
+    Unfrozen -- the developer's checkout, and the tests -- `sys.executable` is a
+    Python interpreter, so the module has to be named.
+    """
+    if getattr(sys, "frozen", False):
+        return [sys.executable]
+    return [sys.executable, "-m", "app.launcher"]
+
+
+def _spawn_detached_server() -> int:
+    """Start the server in a process LaunchServices did not launch, and return.
+
+    This is the heart of DECISIONS.md 16.5. The parent -- the process whose pid
+    LaunchServices recorded when the icon was double-clicked -- must exit, or the
+    app stays on the list of running applications and the *next* double-click is
+    routed to it as a reopen AppleEvent instead of starting a process that could
+    run the probe.
+
+    `os.posix_spawn`, not `os.fork`: this is macOS, the interpreter has already
+    talked to CoreFoundation before `main()` gets control (cfprefsd shows up in
+    the unified log within a millisecond of launch), and calling CF in a forked
+    child that has not exec'd is the documented way to get
+    `__THE_PROCESS_HAS_FORKED_AND_YOU_CANNOT_USE_THIS_COREFOUNDATION_FUNCTIONALITY_SAFELY`.
+    A spawn is a fresh process image and has none of that hazard.
+
+    `setsid=True` puts the child in its own session, so it is not in the
+    parent's process group when the parent goes away and nothing it inherits can
+    signal it. It keeps the same Mach bootstrap namespace -- which is what
+    `webbrowser` needs to reach the default browser (verified: the child opens
+    the browser on a cold Finder launch).
+
+    Not `subprocess`: `tests/test_packaging.py` bans that import from every
+    module in `app/` except `notify.py`, and DECISIONS.md 16.5 keeps the ban and
+    the reason for it while naming this one call as the deliberate exception the
+    ban existed to prevent happening *by accident*.
+    """
+    env = dict(os.environ)
+    env[SERVE_ENV] = "1"
+    argv = _server_argv()
+    return os.posix_spawn(argv[0], argv, env, setsid=True)
+
+
 def _wait_for_ready(health_url: str, server) -> bool:
     """Poll /api/health until it answers, the server gives up, or time runs out.
 
@@ -130,27 +195,14 @@ def _wait_for_ready(health_url: str, server) -> bool:
     return False
 
 
-def main() -> None:
-    """Probe, then start the server, open the browser, and block until it stops."""
+def serve(bind_port: int, origin: str) -> None:
+    """Be the server: validate the data files, bind, open the browser, block.
+
+    This is what the child spawned by :func:`_spawn_detached_server` runs, and
+    it is unchanged from what the LaunchServices-launched process used to do
+    itself. Only *which process* runs it moved (16.5).
+    """
     import uvicorn
-
-    bind_port = config.port()
-    origin = f"http://{config.HOST}:{bind_port}"
-
-    # -- Is one already running? (DECISIONS.md 16.1) ------------------------- #
-    #
-    # First, before binding and before a single data file is opened. A second
-    # double-click must not be able to halt on a corrupt entries.json that the
-    # instance already serving has no problem with -- and more simply, a launch
-    # that is only going to open a browser tab has no business reading the log.
-    verdict, existing = probe(config.HOST, bind_port)
-    if verdict is Probe.OURS:
-        running_pid = existing.get("pid") if existing else None
-        _emit(f"Pink Page Count is already running (pid {running_pid}) -- opening {origin}")
-        webbrowser.open(f"{origin}/")
-        return  # exit 0. One server, one port, two icons clicked.
-    if verdict is Probe.FOREIGN:
-        _port_taken(bind_port)  # raises SystemExit
 
     # Resolve and validate all three data files *before* uvicorn starts, exactly
     # as app.main.main() does, so a corrupt file halts with our banner instead of
@@ -242,6 +294,54 @@ def main() -> None:
     # See DECISIONS.md 16.3 for why that is the design and not a workaround.
     server.run()
     watchdog.stop()
+
+
+def main() -> None:
+    """Decide what this launch is, do the one thing it needs, and get out."""
+    bind_port = config.port()
+    origin = f"http://{config.HOST}:{bind_port}"
+
+    # -- Am I the server? (DECISIONS.md 16.5) -------------------------------- #
+    #
+    # Only ever true in the child spawned below, which is deliberately not a
+    # process LaunchServices knows about. Checked first so the server does not
+    # probe the port it is about to bind.
+    if os.environ.get(SERVE_ENV):
+        serve(bind_port, origin)
+        return
+
+    # -- Is one already running? (DECISIONS.md 16.1) ------------------------- #
+    #
+    # First, before binding and before a single data file is opened. A second
+    # double-click must not be able to halt on a corrupt entries.json that the
+    # instance already serving has no problem with -- and more simply, a launch
+    # that is only going to open a browser tab has no business reading the log.
+    verdict, existing = probe(config.HOST, bind_port)
+    if verdict is Probe.OURS:
+        running_pid = existing.get("pid") if existing else None
+        _emit(f"Pink Page Count is already running (pid {running_pid}) -- opening {origin}")
+        webbrowser.open(f"{origin}/")
+        return  # exit 0. One server, one port, two icons clicked.
+    if verdict is Probe.FOREIGN:
+        _port_taken(bind_port)  # raises SystemExit
+
+    # -- Nothing there. Start the server, in a process that outlives me. ----- #
+    #
+    # 16.5: whoever LaunchServices launched has to exit, or the *next*
+    # double-click is not a launch at all and never reaches the probe above.
+    try:
+        child = _spawn_detached_server()
+    except OSError as exc:
+        # Spawning is the one thing here that can fail for reasons outside this
+        # program -- and a reading tracker that starts is worth more than one
+        # that relaunches cleanly. Serve in this process instead: the app works,
+        # and only the second double-click is back to being broken.
+        _emit_error(f"Could not start a detached server ({exc}); serving in this process.")
+        serve(bind_port, origin)
+        return
+
+    _emit(f"Pink Page Count -- server started (pid {child}), serving {origin}")
+    return  # exit 0, promptly, so LaunchServices stops calling this app running
 
 
 if __name__ == "__main__":

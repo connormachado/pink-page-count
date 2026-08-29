@@ -1482,7 +1482,7 @@ on `PATH`):
   now has the pre-flight this bullet said it lacked, and a stricter one than
   `run.command`'s `/api/health` (5.2): a second launch while an instance is
   running opens the browser at it and exits `0` instead of doing nothing visible
-  at all, and a port held by something that is *not* us produces a dialog on
+  at all — though not, until **16.5**, when both launches came from Finder, and a port held by something that is *not* us produces a dialog on
   screen rather than an icon that bounces once and vanishes. The exit code for
   that case is still `3`, deliberately.
 
@@ -1747,6 +1747,16 @@ process never registers with the window server at all, so neither key changes
 what happens on screen. Declaring one would be documentation filed in the wrong
 place; this paragraph is where it belongs.
 
+> **Amended by 16.5.** The conclusion above is right and the reason given for it
+> is wrong, in a way that hid a real bug for a whole section. "Never registers
+> with the window server" is true. "Therefore LaunchServices does not know about
+> it" does not follow, and is false: `lsappinfo` lists a running instance under
+> its bundle identifier, `type="Foreground"`, `parentASN="Finder"` — registered
+> with LaunchServices, and merely `!cgsConnection` with the window server. Those
+> are two different registries and this paragraph collapsed them into one. What
+> follows from the real one is 16.5: an app LaunchServices calls *running* does
+> not get launched again, so 16.1's probe never ran on a second double-click.
+
 What that costs, stated plainly: a launch that fails *after* the probe still
 bounces the icon and vanishes, because the bounce belongs to LaunchServices and
 there is no tile of ours to replace it with. **B3** — the corrupt-file banner
@@ -1783,6 +1793,15 @@ and the environment stripped to `env -i` (15.5's conditions):
   pid. Verified through **LaunchServices** (`open "Pink Page Count.app"`, the
   actual double-click path), not only by running the inner executable — this is
   the case that used to do nothing visible at all.
+
+  > **Wrong, and corrected in 16.5.** This bullet describes a run that really
+  > happened and a conclusion that does not follow from it. `open` spawned a
+  > fresh process here only because the instance it found was one this session
+  > had started *by running the inner executable*, which LaunchServices has no
+  > record of. Start the first instance the way a recipient does — by
+  > double-clicking — and the second double-click spawns no process at all. The
+  > precondition that matters is how the **first** instance was launched, and
+  > this bullet got it from the wrong place.
 - **A stranger on the port** (a plain `http.server` holding it, 404ing
   `/api/ping`) produces the dialog on screen — an `osascript` process was
   observed running with it — and the launcher exits **`3`**. Not silence.
@@ -1803,6 +1822,186 @@ and the environment stripped to `env -i` (15.5's conditions):
 
 **Not fixed here, and unchanged:** B3, B4, B5, S1–S7, and 15.6's signing and
 architecture problems. This section was scoped to lifecycle.
+
+### 16.5 Amendment: the relaunch that was never a launch
+
+16.1 says "a second launch always opens the app." The code in it is correct and
+did the wrong thing anyway, because on a real double-click **there was no second
+launch for it to run in.**
+
+**The symptom.** Cold start from `/Applications` by double-click: works. Double-
+click again with an instance still running: the Dock icon bounces and no tab
+opens. The same probe run from a Terminal prints `already running (pid …)` and
+opens the browser correctly. Right logic, wrong assumption underneath it.
+
+**What was actually happening.** LaunchServices keeps its own register of running
+applications, and this app is in it:
+
+```
+"Pink Page Count" ASN:0x0-0x42e72e3:
+    bundleID="com.connormachado.pinkpagecount"
+    bundle path="/Applications/Pink Page Count.app"
+    pid = 75454 !cgsConnection !signalled type="Foreground"
+    parentASN="Finder" ASN:0x0-0x42aa2a6:
+```
+
+A second Finder open of an app already on that list is **not a launch**. No
+process is created; LaunchServices routes the gesture to the instance it already
+has, as a reopen AppleEvent. Measured directly: with pid 75712 serving since
+18:01:30, a Finder open at 18:01:50 produced no new pid at all, and rewrote the
+*existing* record's `launch time` and `checkin time` to 18:01:50. The process
+count before, during and after was one, and it was the same one.
+
+So `app/launcher.py`'s probe — every branch of 16.1, the `/api/ping` identity
+route, the dialog — was unreachable from Finder. It was not that the browser call
+failed. **Nothing ran.** And the reopen AppleEvent that did get sent went to a
+process with no AppKit event loop to receive it (16.3), which is also why the
+Dock had nothing to stop bouncing for.
+
+Confirmed on a minimal bundle stripped to nothing but this behavior: a `.app`
+whose executable stays alive answers three Finder opens with one process; the
+same bundle with an executable that starts a child and exits answers each Finder
+open with a fresh process, every time.
+
+**Why the terminal test missed it, and it is not the half you would guess.**
+16.4 claimed this case was "verified through LaunchServices (`open "Pink Page
+Count.app"`, the actual double-click path)". `open` really is that path. The flaw
+is on the other side: the instance it found had been started **by running the
+inner executable** under `env -i`, and an executable run directly is invisible to
+LaunchServices — nothing registers it, so the app is not on the running list, so
+`open` spawns a fresh process, which runs the probe, which opens the browser and
+prints the transcript 16.4 recorded. Every word of that transcript is real.
+
+The precondition that decides this bug is **how the first instance was started**,
+not how the second launch is issued. Both halves have to come from
+LaunchServices. A test that stripped the environment to `env -i` for realism made
+the bug impossible to reproduce, by removing the one thing that causes it.
+
+**The fix: the process LaunchServices launches is never the server.** It probes,
+does one small thing, and exits — opens the browser at the instance already
+running, shows the port-taken dialog, or hands the server to a detached child.
+Because it exits, the app is never on the running list, so every double-click is
+a real launch that reaches the probe. The three branches of 16.1 are unchanged;
+what changed is that they now run.
+
+`app/launcher.py` splits into `main()` — the decision, in the launched process —
+and `serve()`, which is the old body verbatim and now belongs to the child. The
+child is told which it is by `PAGECOUNT_SERVE=1` in its environment. That name is
+deliberately *not* in `app/config.py` beside `PAGECOUNT_PORT` and the four path
+overrides: those are documented knobs (5.1), and this is private plumbing between
+a parent and the child it just spawned. Setting it by hand is also how the frozen
+server is run in the foreground for a terminal session, which is how 15.5's
+`SIGINT`/`SIGTERM` behavior is still exercised now that a Finder launch no longer
+leaves a foreground server attached to anything.
+
+**`os.posix_spawn`, not `os.fork`.** By the time `main()` gets control the
+interpreter has already talked to CoreFoundation — cfprefsd appears in the
+unified log within a millisecond of launch — and using CF in a forked child that
+has not exec'd is the documented route to
+`__THE_PROCESS_HAS_FORKED_AND_YOU_CANNOT_USE_THIS_COREFOUNDATION_FUNCTIONALITY_SAFELY`.
+A spawn is a fresh process image and has none of that. `setsid=True`, so the
+child is not in the process group of a parent that is about to exit. It keeps the
+same Mach bootstrap namespace, which is what `webbrowser` needs to reach the
+default browser — verified, not assumed: on a cold Finder launch the tab is
+opened by the detached child.
+
+**The subprocess ban stands, with one named exception.** `tests/test_packaging.py`
+still forbids every module in `app/` except `notify.py` from importing
+`subprocess` or `multiprocessing`, and the reason 16.1 gave for it — "a frozen
+app that spawns `sys.executable` re-executes its own bundle" — is now exactly
+what the launcher does on purpose. That is the difference the ban was for: not
+that re-executing the bundle is wrong, but that it must never happen by accident.
+So the ban keeps its teeth and a new test grows around the exception:
+`app/launcher.py` may make **one** process-starting call, it must be
+`os.posix_spawn`, it must pass `setsid`, and its command line must be
+`sys.executable`. `os.fork` and `os.system` are named and rejected there too.
+
+**No `LSUIElement` and no `LSBackgroundOnly`, still — and now for a tested
+reason.** 16.3 declined both keys on reasoning that turned out to be wrong, so
+they were re-examined rather than inherited. They are Dock-presence keys, not
+launch-routing keys: a minimal bundle marked `LSUIElement` is deduplicated by
+LaunchServices exactly like an unmarked one. They would not have fixed this, and
+with the launched process now exiting in milliseconds there is nothing left for
+them to suppress.
+
+**And no Cocoa event loop.** Receiving the reopen AppleEvent is the other way to
+fix this, and it needs AppKit — `pyobjc`, `rumps`, or a hand-rolled bridge — which
+is a new runtime dependency and a large amount of machinery to receive one event.
+Exiting promptly gets the same outcome with less: LaunchServices does not send a
+reopen event to an app it does not think is running.
+
+**What the prompt exit costs, stated plainly.** The launched process is gone
+before uvicorn binds, so a failure *after* the spawn has nowhere on screen to
+land. That is **B3**, unchanged and not fixed here — the corrupt-file banner
+(3.4) still renders correctly and still goes to a `stderr` nobody is attached to.
+No better than before, and no worse: the branch that was already silent is the
+same branch, running in a different process. The port-taken dialog (16.1) is
+unaffected, because the probe that raises it happens *before* the spawn, in the
+process that is still alive to show it.
+
+**The race, and why it resolves.** Two double-clicks in the same instant give two
+launched processes that both probe an empty port and both spawn a server. The
+first binds; the second gets `[Errno 48]`, exits, and is gone. One server
+survives, which is the invariant that matters. It is not defended against beyond
+that: a second probe inside the child would duplicate 16.1's logic in a second
+place to improve on an outcome that is already correct.
+
+**What is verified.** Backend **279**, up from 275 — `tests/test_launcher.py`
+gains the cold start spawning exactly one detached server while opening no data
+file and no browser, the child's command line and `setsid`, the marker making a
+process serve without probing, and a failed spawn falling back to serving in
+place; `tests/test_packaging.py` gains the one-spawn guard above. Front end
+unchanged at 102.
+
+In the rebuilt bundle in `/Applications`, launched by **Finder** (`tell
+application "Finder" to open`, which LaunchServices records with
+`parentASN="Finder"` exactly as a double-click does):
+
+- **Cold start.** The launched process probes, finds nothing, spawns the server
+  (pid 78290), and exits. One listener on `127.0.0.1:8420`, one new browser tab,
+  opened by the child — so `setsid` does not cost the child the default browser.
+  `lsappinfo` lists the app as running: **not at all**, which is the property the
+  whole fix rests on.
+- **Relaunch with 78290 serving.** A *new* process is created — the thing that
+  never used to happen. It probes `OURS` (`{"app":
+  "com.connormachado.pinkpagecount", "pid": 78290}`), opens a second tab on the
+  app, and exits. Same server pid, one listener, `LS-running` still 0. Done twice
+  in a row: tabs 1 → 2 → 3, one server throughout.
+- **Relaunch after the heartbeat timeout.** With no tab beating, 78290 exited on
+  its own five minutes later (16.2, timeout untouched) and released the port. The
+  next Finder open cold-started normally: new server 78597, `/api/health` `200`,
+  `/api/ping` answering with its own pid.
+- **A stranger on the port.** A foreign server holding 8420 and 404ing
+  `/api/ping` still produces the `osascript` dialog on screen, carrying the same
+  message word for word, with no server of ours started. Exit **`3`**, read
+  directly — that one is from a Terminal, because a Finder launch has no exit
+  code anybody can see.
+- **No orphan in any case.** After all of it: no app process, no listener, and
+  nothing in LaunchServices' running list.
+- **`DATA_ROOT` byte-for-byte identical** before and after the whole run —
+  `entries.json`, `classes.json`, `settings.json` and `my-quotes.txt` all
+  unchanged across every launch, relaunch, probe and dialog.
+
+**How long the launched process lives**, measured by polling at 20 ms through a
+relaunch: **about half a second**, nearly all of it `webbrowser.open` waiting on
+`osascript`. Before this section that process lived for the entire session.
+
+**Not verified here, and it needs eyes.** The Dock. Screen recording is not
+available to the session that made this change, so every Dock claim in this
+section is inferred from LaunchServices state rather than seen. What is known:
+the app is not on LaunchServices' running list at any point, and the launched
+process is gone in about half a second instead of lasting the session. Whether
+any bounce remains visible in that half second is a question only somebody
+looking at the screen can close.
+
+**The diagnosis was made with a temporary trace, and it has been removed.** A
+Finder-launched `.app` has no voice (B3), so finding out which branch it took
+meant writing it to `DATA_ROOT/launch-trace.log` from `app/launcher.py`. That
+served its purpose — it is the evidence for the branch transcripts above — and it
+is gone from the shipping build, which was rebuilt without it and re-verified
+from scratch against every case listed here. `tests/conftest.py`'s guard against
+anything touching the real Application Support directory failed loudly while the
+trace was in, which is the guard doing exactly its job.
 
 ---
 
