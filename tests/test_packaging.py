@@ -226,6 +226,48 @@ def test_only_notify_may_spawn_a_process():
     )
 
 
+def test_the_launcher_spawns_only_itself_and_only_to_detach():
+    """The one process the launcher starts is this same program, deliberately.
+
+    DECISIONS.md 16.5 makes the launcher spawn a detached copy of itself, which
+    is the *exact* thing the subprocess ban above was written to prevent
+    happening by accident ("a frozen app that spawns sys.executable re-executes
+    its own bundle"). The ban still stands -- `os.posix_spawn` is not
+    `subprocess`, and this is not a shell -- so this test is what stops the
+    exception from widening: one spawn, of `sys.executable`, and nothing else.
+    """
+    tree = ast.parse(LAUNCHER.read_text(encoding="utf-8"))
+
+    spawns = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr.startswith(("posix_spawn", "spawn", "fork", "exec", "system"))
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "os"
+    ]
+    assert len(spawns) == 1, (
+        "app/launcher.py may start exactly one process, and only to detach the "
+        f"server from LaunchServices (16.5); found {len(spawns)}"
+    )
+    assert spawns[0].func.attr == "posix_spawn", (
+        "os.fork() without exec is unsafe on macOS after CoreFoundation has been "
+        "touched, which it has by the time main() runs -- see 16.5"
+    )
+
+    # setsid, so the child is not in the process group of a parent about to exit.
+    assert any(kw.arg == "setsid" for kw in spawns[0].keywords), (
+        "the detached server must be spawned with setsid=True"
+    )
+
+    # The command line is this program. Nothing is interpolated into a shell.
+    argv_source = ast.unparse(tree)
+    assert "sys.executable" in argv_source, (
+        "the child must be this same executable, not a path built from anything else"
+    )
+
+
 def test_notify_runs_nothing_but_osascript():
     """The one command line in app/notify.py is a constant, not a computed path."""
     from app import notify

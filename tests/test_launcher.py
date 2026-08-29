@@ -1,24 +1,44 @@
 """What the frozen app does at the moment the icon is double-clicked.
 
-See DECISIONS.md 16.1. Three outcomes, and the whole point of this file is that
-the third one -- a stranger on the port -- is no longer silence:
+See DECISIONS.md 16.1 and 16.5. The process LaunchServices launches decides one
+of three things and then leaves:
 
-    nothing listening  -> start the server
+    nothing listening  -> spawn a detached server, exit 0
     ours listening     -> open the browser at it, exit 0
     something else     -> say so on screen, exit 3
 
-None of these tests start a server. They pin the *decision*, and in particular
-that the two non-starting branches take it before a single data file is opened.
+**Leaving is load-bearing** (16.5): a `.app` whose launched process stays alive
+is an app LaunchServices calls *running*, and the next double-click is routed to
+it as a reopen AppleEvent no process without an AppKit event loop can receive --
+so no second process is created and none of the three branches above ever runs.
+That is what `test_nothing_listening_*` pins.
+
+None of these tests start a server or spawn a process. They pin the *decision*,
+and in particular that all three launched-process branches take it before a
+single data file is opened -- serving, and the data files that come with it,
+belongs to the child.
 """
 
 from __future__ import annotations
 
 import subprocess
+import sys
 
 import pytest
 
 from app import launcher, notify
 from app.lifecycle import Probe
+
+
+@pytest.fixture(autouse=True)
+def not_the_server(monkeypatch):
+    """No test in this file is the detached child unless it says so.
+
+    The marker is an ordinary environment variable, so a developer who exported
+    it to run the frozen server in the foreground (16.5) would otherwise send
+    every launched-process test down the serve branch.
+    """
+    monkeypatch.delenv(launcher.SERVE_ENV, raising=False)
 
 
 @pytest.fixture
@@ -47,6 +67,23 @@ def no_server(monkeypatch):
 
     monkeypatch.setattr("uvicorn.Server", forbidden)
     monkeypatch.setattr("uvicorn.Config", forbidden)
+
+
+@pytest.fixture
+def spawned(monkeypatch):
+    """Record the spawn without spawning. Returns the (argv, env) list.
+
+    Unpatched this would really start a second Pink Page Count, so every test
+    that can reach the NOTHING branch takes this fixture.
+    """
+    calls: list[tuple[list[str], dict]] = []
+
+    def fake_posix_spawn(path, argv, env, **kwargs):
+        calls.append((list(argv), dict(env), dict(kwargs)))
+        return 424242
+
+    monkeypatch.setattr(launcher.os, "posix_spawn", fake_posix_spawn)
+    return calls
 
 
 @pytest.fixture
@@ -123,13 +160,57 @@ def test_the_port_taken_message_does_not_scold(monkeypatch, no_stores, no_server
         assert scold not in message
 
 
-def test_nothing_listening_falls_through_to_a_real_launch(monkeypatch, opened, alerts):
-    """The ordinary case must not be swallowed by the two new branches.
+def test_nothing_listening_spawns_a_detached_server_and_returns(
+    monkeypatch, no_stores, no_server, spawned, opened, alerts
+):
+    """The ordinary cold start: hand the server to a child, and get out.
 
-    Stores ARE opened here -- that is the difference -- so this stops at the
-    first thing after them rather than starting a server.
+    DECISIONS.md 16.5. The launched process must not become the server and must
+    not linger, because LaunchServices treats a live process as "this app is
+    already running" and silently turns the next double-click into a reopen
+    AppleEvent instead of a launch. `no_stores` and `no_server` are the
+    assertions that matter here: opening the reading log and binding the socket
+    are now the child's job, not this process's.
     """
     _probe_returns(monkeypatch, Probe.NOTHING)
+
+    launcher.main()  # returns promptly; exit 0
+
+    assert len(spawned) == 1, "exactly one server, spawned exactly once"
+    assert alerts == [], "an ordinary cold start is not an event worth a dialog"
+    assert opened == [], "the child opens the browser once it is actually serving"
+
+
+def test_the_spawned_child_is_this_same_program_told_to_serve(
+    monkeypatch, no_stores, no_server, spawned, opened, alerts
+):
+    """The child is us, re-run with the marker -- and detached from this session."""
+    _probe_returns(monkeypatch, Probe.NOTHING)
+
+    launcher.main()
+
+    argv, env, kwargs = spawned[0]
+    assert argv[0] == sys.executable, "the child is this program, not a second one"
+    assert argv == launcher._server_argv()
+    assert env[launcher.SERVE_ENV] == "1", "without the marker the child would re-probe"
+    assert kwargs.get("setsid") is True, (
+        "the child must not be in the process group of a parent that is about to exit"
+    )
+
+
+def test_the_serve_marker_makes_this_process_the_server(monkeypatch, alerts):
+    """The other side of the same coin: with the marker set, serve -- never probe.
+
+    The child must not probe the port it is about to bind, and it *is* the
+    process that validates all three data files (DECISIONS.md 3.4 still halts a
+    launch that is going to serve).
+    """
+
+    def no_probing(*args, **kwargs):
+        raise AssertionError("the server probed the port it was about to bind")
+
+    monkeypatch.setattr(launcher, "probe", no_probing)
+    monkeypatch.setenv(launcher.SERVE_ENV, "1")
 
     opened_paths: list[object] = []
     monkeypatch.setattr(launcher, "load_storage_or_exit", opened_paths.append)
@@ -149,6 +230,31 @@ def test_nothing_listening_falls_through_to_a_real_launch(monkeypatch, opened, a
 
     assert len(opened_paths) == 3, "a real launch validates all three data files first"
     assert alerts == []
+
+
+def test_a_spawn_that_fails_still_gets_the_app_running(
+    monkeypatch, no_server, spawned, alerts
+):
+    """A tracker that starts beats one that relaunches cleanly.
+
+    If the spawn itself fails there is nothing useful to say to her, so the
+    launched process serves in place: the app works and only the *second*
+    double-click is back to being broken.
+    """
+    _probe_returns(monkeypatch, Probe.NOTHING)
+
+    def boom(*args, **kwargs):
+        raise OSError("cannot spawn here")
+
+    monkeypatch.setattr(launcher.os, "posix_spawn", boom)
+
+    served: list[bool] = []
+    monkeypatch.setattr(launcher, "serve", lambda *a, **k: served.append(True))
+
+    launcher.main()
+
+    assert served == [True], "the fallback is to serve, not to give up"
+    assert alerts == [], "§8: nothing here is her problem to solve"
 
 
 # --------------------------------------------------------------------------- #
