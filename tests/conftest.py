@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.classes import ClassStore  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.quotes import QuoteSource  # noqa: E402
+from app.settings import SettingsStore  # noqa: E402
 from app.storage import Storage  # noqa: E402
 
 TEST_TZ = "America/New_York"
@@ -56,6 +57,16 @@ def class_store(classes_file: Path) -> ClassStore:
 
 
 @pytest.fixture
+def settings_file(tmp_path: Path) -> Path:
+    return tmp_path / "data" / "settings.json"
+
+
+@pytest.fixture
+def settings_store(settings_file: Path) -> SettingsStore:
+    return SettingsStore(settings_file)
+
+
+@pytest.fixture
 def quotes_file(tmp_path: Path) -> Path:
     """A quote file under tmp_path. Deliberately NOT created -- a test that wants
     content writes it. No test ever reads the repo's real quotes.txt."""
@@ -64,10 +75,18 @@ def quotes_file(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def client(
-    storage: Storage, quotes_file: Path, class_store: ClassStore
+    storage: Storage,
+    quotes_file: Path,
+    class_store: ClassStore,
+    settings_store: SettingsStore,
 ) -> TestClient:
     return TestClient(
-        create_app(storage, QuoteSource(quotes_file), classes=class_store)
+        create_app(
+            storage,
+            QuoteSource(quotes_file),
+            classes=class_store,
+            settings=settings_store,
+        )
     )
 
 

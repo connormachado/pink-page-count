@@ -1,12 +1,13 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
-import { ENTRY, statsWith, stubFetch } from "./helpers";
+import { ENTRY, SETTINGS, statsWith, stubFetch } from "./helpers";
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  document.documentElement.removeAttribute("data-theme");
 });
 
 describe("the empty state", () => {
@@ -29,7 +30,11 @@ describe("the empty state", () => {
 
     expect(screen.queryByTestId("big-number")).not.toBeInTheDocument();
     // And no chips either: there is no number for them to switch between.
-    expect(screen.queryByRole("button", { name: "All-time" })).not.toBeInTheDocument();
+    // (Checking the group itself, not a button name, since the settings
+    // panel's own default-chip control reuses the same three labels.)
+    expect(
+      screen.queryByRole("group", { name: "Which number to show" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders a real 0 once something is logged -- a quiet morning is not an empty state", async () => {
@@ -42,7 +47,10 @@ describe("the empty state", () => {
     render(<App />);
 
     await waitFor(() => expect(screen.getByTestId("big-number")).toBeInTheDocument());
-    await user.click(screen.getByRole("button", { name: "Today" }));
+    // Scoped away from the settings panel's own default-chip control, which
+    // reuses the same three labels (DECISIONS.md 13).
+    const chips = within(screen.getByRole("group", { name: "Which number to show" }));
+    await user.click(chips.getByRole("button", { name: "Today" }));
 
     expect(screen.getByTestId("big-number").textContent).toBe("0");
     expect(screen.queryByText(/first pages go here/i)).not.toBeInTheDocument();
@@ -68,6 +76,7 @@ describe("the empty state", () => {
       }
       if (url.includes("/api/quote")) return new Response(JSON.stringify({ quote: "hi" }));
       if (url.includes("/api/stats")) return new Response(JSON.stringify(statsBody));
+      if (url.includes("/api/settings")) return new Response(JSON.stringify(SETTINGS));
       if (url.includes("/api/classes")) return new Response(JSON.stringify([]));
       return new Response(JSON.stringify(statsBody === empty ? [] : [ENTRY]));
     });

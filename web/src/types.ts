@@ -42,6 +42,21 @@ export type Stats = {
   first_entry_date: string | null;
 };
 
+/** The default_chip setting's own vocabulary -- note "all_time" here vs.
+ * "all" in stat.ts's StatKey; chipFromSetting() bridges the two. */
+export type ChipSetting = "all_time" | "today" | "streak";
+
+/** Mirrors app/models.py::SettingsOut. */
+export type Settings = {
+  theme: string;
+  custom_theme: Record<string, string> | null;
+  default_chip: ChipSetting;
+};
+
+/** PATCH sends only the fields that actually changed. custom_theme is a
+ * whole-object replacement, not a per-key merge (DECISIONS.md 13). */
+export type SettingsPatch = Partial<Settings>;
+
 export type EntryCreate = {
   page_start: number;
   page_end: number;

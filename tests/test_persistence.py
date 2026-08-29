@@ -30,15 +30,22 @@ def test_entries_survive_a_restart(data_file):
     assert survivors == created
 
 
-def test_restart_through_the_api_keeps_the_entries(data_file, classes_file):
+def test_restart_through_the_api_keeps_the_entries(
+    data_file, classes_file, settings_file
+):
     """Write through one app, throw it away, and read through a fresh one."""
     from fastapi.testclient import TestClient
 
     from app.classes import ClassStore
     from app.main import create_app
+    from app.settings import SettingsStore
 
     def app():
-        return create_app(Storage(data_file), classes=ClassStore(classes_file))
+        return create_app(
+            Storage(data_file),
+            classes=ClassStore(classes_file),
+            settings=SettingsStore(settings_file),
+        )
 
     with TestClient(app()) as first:
         first.post("/api/entries", json={"page_start": 43, "page_end": 71})

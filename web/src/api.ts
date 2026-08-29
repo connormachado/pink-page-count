@@ -5,6 +5,8 @@ import type {
   Entry,
   EntryCreate,
   EntryPatch,
+  Settings,
+  SettingsPatch,
   Stats,
 } from "./types";
 
@@ -75,4 +77,8 @@ export const api = {
   // Deletes the class only. Every entry logged under it is kept, with its
   // class_id cleared by the server (DECISIONS.md 12.3).
   removeClass: (id: string) => request<void>(`/api/classes/${id}`, { method: "DELETE" }),
+
+  settings: () => request<Settings>("/api/settings"),
+  updateSettings: (changes: SettingsPatch) =>
+    request<Settings>("/api/settings", { method: "PATCH", body: JSON.stringify(changes) }),
 };

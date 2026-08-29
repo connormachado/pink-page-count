@@ -5,8 +5,47 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Page Count</title>
     <!-- No external stylesheet, script, or font link. Ever. See DECISIONS.md 5 and 9.4. -->
-    <script type="module" crossorigin src="/assets/index-CypPAR_T.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-BUs-aUFB.css">
+
+    <!-- Theme must apply before first paint (DECISIONS.md 13). This reads a
+         PAINT CACHE ONLY -- never a data source -- mirrored into localStorage
+         by src/theme.ts. A cleared cache simply no-ops here: tokens.css's own
+         pink default paints, and GET /api/settings corrects it moments later.
+         Runs before any module script, so the key and token names below are
+         necessarily literal (no import is possible yet); keep them in sync
+         with PAINT_CACHE_KEY / SEMANTIC_TOKENS in src/theme.ts. -->
+    <script>
+      (function () {
+        var KEY = "ppc:theme-cache";
+        var TOKENS = [
+          "--pink-hot",
+          "--pink-wash",
+          "--pink-surface",
+          "--pink-edge",
+          "--ink",
+          "--rose-muted",
+        ];
+        try {
+          var raw = localStorage.getItem(KEY);
+          if (!raw) return;
+          var cache = JSON.parse(raw);
+          if (!cache || typeof cache.theme !== "string") return;
+          document.documentElement.setAttribute("data-theme", cache.theme);
+          var custom = cache.custom_theme;
+          if (custom && typeof custom === "object") {
+            for (var i = 0; i < TOKENS.length; i++) {
+              var value = custom[TOKENS[i]];
+              if (typeof value === "string" && value) {
+                document.documentElement.style.setProperty(TOKENS[i], value);
+              }
+            }
+          }
+        } catch (e) {
+          // Corrupt or unreadable cache: no-op, per the comment above.
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-CEtnGGOd.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-C3Iufygv.css">
   </head>
   <body>
     <div id="root"></div>

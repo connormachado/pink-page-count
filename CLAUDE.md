@@ -7,7 +7,7 @@ wrong, stop and say so — do not work around it.
 
 ## Rules
 
-- Phased build, 4 phases. Do not build ahead of the current phase.
+- Phased build, 5 phases. Do not build ahead of the current phase.
 - Do not change the schema, storage semantics, or existing endpoints in app/
   without saying so in DECISIONS.md in the same commit. Adding new routes and
   new modules is expected.

@@ -6,10 +6,11 @@ how the pages add up. Runs entirely on this Mac: no account, no cloud, no intern
 Your data lives in one plain JSON file — `data/entries.json` — that you can open and
 edit in any text editor.
 
-**Phase 4 of 4: deployment.** The app is complete and self-contained: double-click
-`run.command`, no terminal, no Node, works with wifi off. FastAPI now serves the built
-front end directly — there is no separate dev server to run alongside it any more,
-and no port but 8420 involved.
+**Phase 5 of 5: settings and themes.** The app is self-contained: double-click
+`run.command`, no terminal, no Node, works with wifi off. FastAPI serves the built
+front end directly — there is no separate dev server to run alongside it, and no
+port but 8420 involved. Six preset color themes plus a custom theme editor live in
+a collapsed "Settings" panel, alongside a default-chip preference.
 
 ---
 
@@ -133,6 +134,8 @@ file.
 | `GET` | `/api/stats` | — |
 | `GET` | `/api/quote` | — |
 | `GET` | `/api/export` | — downloads a backup of everything, see below |
+| `GET` | `/api/settings` | — theme, custom theme overrides, default chip |
+| `PATCH` | `/api/settings` | any of `theme`, `custom_theme`, `default_chip` |
 
 **Page counting is inclusive.** Pages 43–71 is 29 pages. Pages 43–43 is 1 page.
 
@@ -190,6 +193,10 @@ click **Download a backup** at the bottom of the page — it downloads one JSON 
 everything in it. There's no matching "restore" button; if you ever need it back,
 stop the tracker and copy the entries/classes back out of the downloaded file into
 `data/entries.json` and `data/classes.json` by hand.
+
+`data/settings.json` (your theme and default chip) follows the same atomic-write and
+damaged-file rules as the other two, but it's cosmetic, not reading history — losing it
+just means the app reverts to the pink default on next launch.
 
 ---
 
@@ -301,6 +308,7 @@ app/
   daytime.py      timestamps and the 4am day boundary
   storage.py      atomic writes and loading -- the durability code
   classes.py      classes.json: load, CRUD, write-through
+  settings.py     settings.json: theme, custom theme, default chip
   models.py       request and response shapes, page-range validation
   stats.py        pages today, streaks
   quotes.py       picks the day's quote. Cannot reach your reading log
@@ -311,16 +319,20 @@ web/
   public/fonts/   Fraunces, vendored -- never fetched
   dist/           the built front end -- committed, and what run.command serves
   src/
-    tokens.css    every color, duration, and font, defined once
+    tokens.css    theme layer + semantic layer -- every color, duration, and
+                  font, defined once (six preset themes live here)
+    theme.ts      preset ids/labels and the theme-applying functions
+    contrast.ts   the WCAG contrast check behind the theme editor's warnings
     api.ts        the API calls and the two kinds of failure
     milestones.ts which thousand you just passed -- never how far to the next
     App.tsx       the page
-    components/
+    components/   ClassManager, SettingsPanel + ThemeEditor, and the rest
     __tests__/
 tests/
 data/
   entries.json    your reading log
   classes.json    your classes
+  settings.json   your theme and default chip
 ```
 
 **`DECISIONS.md` is the reference.** It records the data schema and the reasoning behind

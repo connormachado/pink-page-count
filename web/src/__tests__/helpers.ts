@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 import { CLASS_TOKENS } from "../palette";
-import type { Class, Entry, Stats } from "../types";
+import type { Class, Entry, Settings, Stats } from "../types";
 
 export const STATS: Stats = {
   pages_today: 29,
@@ -31,6 +31,17 @@ export const CLASS: Class = {
   created_at: "2026-08-25T09:04:11-04:00",
   updated_at: "2026-08-25T09:04:11-04:00",
 };
+
+export const SETTINGS: Settings = {
+  theme: "pink",
+  custom_theme: null,
+  default_chip: "all_time",
+};
+
+/** A settings payload with the fields a test cares about, defaults for the rest. */
+export function settingsWith(overrides: Partial<Settings>): Settings {
+  return { ...SETTINGS, ...overrides };
+}
 
 /** An entry with the fields a test cares about, defaults for the rest. */
 export function entryWith(overrides: Partial<Entry>): Entry {
@@ -73,27 +84,35 @@ export function stubFetch(routes: {
   entries?: Route;
   quote?: Route;
   classes?: Route;
+  settings?: Route;
   post?: Route;
   patch?: Route;
   delete?: Route;
   classPost?: Route;
   classPatch?: Route;
   classDelete?: Route;
+  settingsPatch?: Route;
 }) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = (init?.method ?? "GET").toUpperCase();
     const isClass = url.includes("/api/classes");
+    const isSettings = url.includes("/api/settings");
 
     let route: Route | undefined;
     if (method === "POST")
       route = isClass ? (routes.classPost ?? { status: 201, body: CLASS }) : routes.post;
     else if (method === "PATCH")
-      route = isClass ? (routes.classPatch ?? { body: CLASS }) : routes.patch;
+      route = isSettings
+        ? (routes.settingsPatch ?? { body: SETTINGS })
+        : isClass
+          ? (routes.classPatch ?? { body: CLASS })
+          : routes.patch;
     else if (method === "DELETE")
       route = (isClass ? routes.classDelete : routes.delete) ?? { status: 204 };
     else if (url.includes("/api/quote")) route = routes.quote ?? { body: { quote: QUOTE } };
     else if (url.includes("/api/stats")) route = routes.stats ?? { body: STATS };
+    else if (isSettings) route = routes.settings ?? { body: SETTINGS };
     else if (isClass) route = routes.classes ?? { body: [] };
     else if (url.includes("/api/entries")) route = routes.entries ?? { body: [] };
 

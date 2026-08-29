@@ -1,13 +1,14 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
-import { ENTRY, setReducedMotion, statsWith } from "./helpers";
+import { ENTRY, SETTINGS, setReducedMotion, statsWith } from "./helpers";
 import type { Stats } from "../types";
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  document.documentElement.removeAttribute("data-theme");
 });
 
 function stubBackend(before: Stats, after: Stats) {
@@ -20,6 +21,8 @@ function stubBackend(before: Stats, after: Stats) {
     }
     if (url.includes("/api/quote")) return new Response(JSON.stringify({ quote: "hi" }));
     if (url.includes("/api/stats")) return new Response(JSON.stringify(current));
+    if (url.includes("/api/settings")) return new Response(JSON.stringify(SETTINGS));
+    if (url.includes("/api/classes")) return new Response(JSON.stringify([]));
     return new Response(JSON.stringify([ENTRY]));
   });
 }
@@ -116,7 +119,10 @@ describe("the count-up", () => {
 
     vi.stubGlobal("requestAnimationFrame", rafSpy);
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Today" }));
+    // Scoped away from the settings panel's own default-chip control, which
+    // reuses the same three labels (DECISIONS.md 13).
+    const chips = within(screen.getByRole("group", { name: "Which number to show" }));
+    await user.click(chips.getByRole("button", { name: "Today" }));
 
     expect(numeral()).toBe(String(statsWith({}).pages_today));
     expect(rafSpy).not.toHaveBeenCalled();

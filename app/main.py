@@ -28,12 +28,15 @@ from .models import (
     EntryOut,
     EntryUpdate,
     QuoteOut,
+    SettingsOut,
+    SettingsUpdate,
     StatsOut,
     ValidationProblem,
     to_out,
     validate_page_range,
 )
 from .quotes import QuoteSource
+from .settings import SettingsStore, load_settings_store_or_exit
 from .stats import compute_stats
 from .storage import Storage, load_storage_or_exit
 
@@ -95,16 +98,18 @@ def create_app(
     quotes: QuoteSource | None = None,
     *,
     classes: ClassStore,
+    settings: SettingsStore,
     dist_dir: Path | None = None,
 ) -> FastAPI:
     """Build the app around injected stores (DECISIONS.md 3.7).
 
-    `classes` is REQUIRED and has no default, unlike `quotes`. A default would mean
-    `create_app(storage)` silently opens -- and, if it is missing, WRITES -- the real
-    data/classes.json (3.3). quotes.txt is only ever read, so a default there cannot
-    damage anything; a class store defaulted into existence would put a test one
-    forgotten argument away from touching real data. Requiring it makes "no test ever
-    touches the real data file" structural rather than a habit.
+    `classes` and `settings` are REQUIRED and have no default, unlike `quotes`. A
+    default would mean `create_app(storage)` silently opens -- and, if missing,
+    WRITES -- the real data/classes.json or data/settings.json (3.3). quotes.txt is
+    only ever read, so a default there cannot damage anything; a store defaulted into
+    existence would put a test one forgotten argument away from touching real data.
+    Requiring it makes "no test ever touches the real data file" structural rather
+    than a habit.
     """
     quotes = quotes or QuoteSource(config.quotes_file())
     dist_dir = dist_dir or config.dist_dir()
@@ -280,6 +285,20 @@ def create_app(
         classes.delete(class_id)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+    @app.get("/api/settings", response_model=SettingsOut)
+    async def read_settings() -> dict[str, Any]:
+        return settings.get()
+
+    @app.patch("/api/settings", response_model=SettingsOut)
+    async def update_settings(payload: SettingsUpdate) -> dict[str, Any]:
+        changes = payload.provided()
+        # theme and default_chip are not nullable -- a settings object always has
+        # both. custom_theme IS nullable: null clears any override (DECISIONS.md 13).
+        for field in ("theme", "default_chip"):
+            if field in changes and changes[field] is None:
+                raise ValidationProblem(f"{field} cannot be null")
+        return settings.update(changes)
+
     @app.get("/api/stats", response_model=StatsOut)
     async def read_stats() -> dict[str, Any]:
         return compute_stats(storage.all(), now_local())
@@ -354,16 +373,18 @@ def create_default_app() -> FastAPI:
     return create_app(
         load_storage_or_exit(config.data_file()),
         classes=load_class_store_or_exit(config.classes_file()),
+        settings=load_settings_store_or_exit(config.settings_file()),
     )
 
 
 def main() -> None:
     import uvicorn
 
-    # Resolve (and validate) both data files before uvicorn starts, so a corrupt file
-    # halts with our banner instead of a traceback buried in server startup logs.
+    # Resolve (and validate) all three data files before uvicorn starts, so a corrupt
+    # file halts with our banner instead of a traceback buried in server startup logs.
     load_storage_or_exit(config.data_file())
     load_class_store_or_exit(config.classes_file())
+    load_settings_store_or_exit(config.settings_file())
     uvicorn.run(
         "app.main:create_default_app",
         factory=True,

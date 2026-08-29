@@ -165,6 +165,31 @@ class StatsOut(BaseModel):
     first_entry_date: str | None
 
 
+class SettingsUpdate(BaseModel):
+    """extra='forbid': an unknown settings key is a 422, not silently dropped.
+
+    This is the deliberate opposite of EntryCreate/ClassCreate's extra='ignore'
+    (DECISIONS.md 1.1) -- those exist to swallow a stray `pages` field on purpose;
+    a typo'd settings key deserves to be seen, not to vanish quietly.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    theme: str | None = None
+    custom_theme: dict[str, str] | None = None
+    default_chip: str | None = None
+
+    def provided(self) -> dict[str, Any]:
+        """Only the fields the client actually sent (DECISIONS.md 13)."""
+        return self.model_dump(exclude_unset=True)
+
+
+class SettingsOut(BaseModel):
+    theme: str
+    custom_theme: dict[str, str] | None
+    default_chip: str
+
+
 class QuoteOut(BaseModel):
     """The /api/quote payload. One string, and never anything from the entry log.
 

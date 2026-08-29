@@ -8,10 +8,12 @@ import { EntryForm } from "./components/EntryForm";
 import { ClassManager } from "./components/ClassManager";
 import { EntryList } from "./components/EntryList";
 import { SaveConfirmation } from "./components/SaveConfirmation";
+import { SettingsPanel } from "./components/SettingsPanel";
 import { crossedMilestone } from "./milestones";
 import { FALLBACK_QUOTE, fetchQuote } from "./quote";
-import { selectStat, type StatKey } from "./stat";
-import type { Class, Entry, Stats } from "./types";
+import { chipFromSetting, selectStat, type StatKey } from "./stat";
+import { applyTheme, readResolvedTheme, writePaintCache, type SemanticToken } from "./theme";
+import type { Class, Entry, Settings, Stats } from "./types";
 
 /** What a refresh was caused by. Only "save" -- a brand new entry -- may count
  * up or celebrate. An edit or a delete refetches exactly the same way and shows
@@ -29,6 +31,10 @@ export default function App() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [classes, setClasses] = useState<Class[] | null>(null);
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [resolvedTheme, setResolvedTheme] = useState<Record<SemanticToken, string> | null>(
+    null,
+  );
   const [unreachable, setUnreachable] = useState(false);
   const [selected, setSelected] = useState<StatKey>("all");
   const [quote, setQuote] = useState(FALLBACK_QUOTE);
@@ -54,10 +60,11 @@ export default function App() {
    * toward what arrives below; it never produces it. */
   const refresh = useCallback(async (cause: Cause = "load") => {
     try {
-      const [nextStats, nextEntries, nextClasses] = await Promise.all([
+      const [nextStats, nextEntries, nextClasses, nextSettings] = await Promise.all([
         api.stats(),
         api.entries(),
         api.classes(),
+        api.settings(),
       ]);
 
       if (cause === "save") {
@@ -75,6 +82,11 @@ export default function App() {
       setStats(nextStats);
       setEntries(nextEntries);
       setClasses(nextClasses);
+      setSettings(nextSettings);
+      // Only on load: picking a chip during a session never rewrites the
+      // setting, and a save/change refresh must not yank the view out from
+      // under whatever she's currently looking at (DECISIONS.md 13).
+      if (cause === "load") setSelected(chipFromSetting(nextSettings.default_chip));
       setUnreachable(false);
     } catch (error) {
       if (error instanceof ServerUnreachable) setUnreachable(true);
@@ -86,6 +98,21 @@ export default function App() {
     void refresh("load");
     void fetchQuote().then(setQuote);
   }, [refresh]);
+
+  // Applies on every settings fetch, load and later changes alike.
+  // settings.json is the sole source of truth (DECISIONS.md 13) -- this
+  // effect is what makes that true on screen: it sets data-theme and any
+  // custom overrides, clears overrides that are no longer present, mirrors
+  // the result into the paint cache, and reads the resolved colors back
+  // (synchronously, right after applying them, so there is no race against
+  // a child reading stale values) for the theme editor's color inputs.
+  useEffect(() => {
+    if (settings === null) return;
+    const theme = settings.theme as Parameters<typeof applyTheme>[0];
+    applyTheme(theme, settings.custom_theme);
+    writePaintCache({ theme, custom_theme: settings.custom_theme });
+    setResolvedTheme(readResolvedTheme());
+  }, [settings]);
 
   // Both of these clear themselves. Nothing on this page waits to be dismissed.
   useEffect(() => {
@@ -125,7 +152,7 @@ export default function App() {
     );
   }
 
-  if (stats === null || entries === null || classes === null) {
+  if (stats === null || entries === null || classes === null || settings === null) {
     return (
       <Shell>
         <p className="text-center text-sm text-[var(--rose-muted)]">Loading…</p>
@@ -174,6 +201,16 @@ export default function App() {
           celebrates (DECISIONS.md 11.2, 12.4). */}
       <ClassManager
         classes={classes}
+        onChanged={() => refresh("change")}
+        onUnreachable={() => setUnreachable(true)}
+      />
+
+      {/* Same "out of the way" slot as ClassManager, right beside it. A
+          settings change is an ordinary "change" refresh too (DECISIONS.md
+          13). */}
+      <SettingsPanel
+        settings={settings}
+        resolvedTheme={resolvedTheme}
         onChanged={() => refresh("change")}
         onUnreachable={() => setUnreachable(true)}
       />

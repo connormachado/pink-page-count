@@ -113,15 +113,20 @@ def test_a_version_1_file_becomes_version_2_on_the_next_mutation(data_file):
 
 
 def test_a_version_1_file_serves_correct_pages_through_the_api(
-    data_file, classes_file
+    data_file, classes_file, settings_file
 ):
     from fastapi.testclient import TestClient
 
     from app.main import create_app
+    from app.settings import SettingsStore
 
     write_v1(data_file)
     with TestClient(
-        create_app(Storage(data_file), classes=ClassStore(classes_file))
+        create_app(
+            Storage(data_file),
+            classes=ClassStore(classes_file),
+            settings=SettingsStore(settings_file),
+        )
     ) as client:
         entries = client.get("/api/entries").json()
 

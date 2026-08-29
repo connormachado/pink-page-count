@@ -13,24 +13,32 @@ from fastapi.testclient import TestClient
 from app.classes import ClassStore
 from app.main import create_app
 from app.quotes import QuoteSource
+from app.settings import SettingsStore
 from app.storage import Storage
 
 
-def _app(data_file: Path, classes_file: Path, quotes_file: Path, dist_dir: Path):
+def _app(
+    data_file: Path,
+    classes_file: Path,
+    settings_file: Path,
+    quotes_file: Path,
+    dist_dir: Path,
+):
     return create_app(
         Storage(data_file),
         QuoteSource(quotes_file),
         classes=ClassStore(classes_file),
+        settings=SettingsStore(settings_file),
         dist_dir=dist_dir,
     )
 
 
 def test_api_routes_are_not_shadowed_by_the_static_section(
-    data_file, classes_file, quotes_file, tmp_path
+    data_file, classes_file, settings_file, quotes_file, tmp_path
 ):
     """/api/stats must still answer as JSON, not fall through to index.html."""
     with TestClient(
-        _app(data_file, classes_file, quotes_file, tmp_path / "dist")
+        _app(data_file, classes_file, settings_file, quotes_file, tmp_path / "dist")
     ) as client:
         response = client.get("/api/stats")
 
@@ -39,14 +47,14 @@ def test_api_routes_are_not_shadowed_by_the_static_section(
 
 
 def test_index_html_is_served_with_cache_control_no_store(
-    data_file, classes_file, quotes_file, tmp_path
+    data_file, classes_file, settings_file, quotes_file, tmp_path
 ):
     dist_dir = tmp_path / "dist"
     dist_dir.mkdir(parents=True)
     (dist_dir / "index.html").write_text("<html>hi</html>", encoding="utf-8")
 
     with TestClient(
-        _app(data_file, classes_file, quotes_file, dist_dir)
+        _app(data_file, classes_file, settings_file, quotes_file, dist_dir)
     ) as client:
         response = client.get("/")
 
@@ -56,12 +64,18 @@ def test_index_html_is_served_with_cache_control_no_store(
 
 
 def test_missing_dist_returns_a_friendly_200_not_a_500(
-    data_file, classes_file, quotes_file, tmp_path
+    data_file, classes_file, settings_file, quotes_file, tmp_path
 ):
     """A front end that hasn't been built yet must never crash startup or the
     request -- it is a setup step, not a server error."""
     with TestClient(
-        _app(data_file, classes_file, quotes_file, tmp_path / "does-not-exist")
+        _app(
+            data_file,
+            classes_file,
+            settings_file,
+            quotes_file,
+            tmp_path / "does-not-exist",
+        )
     ) as client:
         response = client.get("/")
 
@@ -71,7 +85,7 @@ def test_missing_dist_returns_a_friendly_200_not_a_500(
 
 
 def test_a_real_asset_is_served_at_its_mounted_path(
-    data_file, classes_file, quotes_file, tmp_path
+    data_file, classes_file, settings_file, quotes_file, tmp_path
 ):
     dist_dir = tmp_path / "dist"
     (dist_dir / "assets").mkdir(parents=True)
@@ -80,7 +94,7 @@ def test_a_real_asset_is_served_at_its_mounted_path(
     )
 
     with TestClient(
-        _app(data_file, classes_file, quotes_file, dist_dir)
+        _app(data_file, classes_file, settings_file, quotes_file, dist_dir)
     ) as client:
         response = client.get("/assets/index-abc123.js")
 

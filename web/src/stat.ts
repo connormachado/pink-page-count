@@ -1,4 +1,4 @@
-import type { Stats } from "./types";
+import type { ChipSetting, Stats } from "./types";
 
 export type StatKey = "all" | "today" | "streak";
 
@@ -7,6 +7,28 @@ export const CHIPS: ReadonlyArray<{ key: StatKey; label: string }> = [
   { key: "today", label: "Today" },
   { key: "streak", label: "Streak" },
 ];
+
+/** The settings panel's default-chip control, in the setting's own
+ * vocabulary ("all_time", not "all"). */
+export const CHIP_SETTING_LABELS: ReadonlyArray<{ key: ChipSetting; label: string }> = [
+  { key: "all_time", label: "All-time" },
+  { key: "today", label: "Today" },
+  { key: "streak", label: "Streak" },
+];
+
+/** Bridges default_chip's "all_time"/"today"/"streak" (the setting) to
+ * StatKey's "all"/"today"/"streak" (what selects a chip on screen). */
+export function chipFromSetting(setting: ChipSetting): StatKey {
+  switch (setting) {
+    case "today":
+      return "today";
+    case "streak":
+      return "streak";
+    case "all_time":
+    default:
+      return "all";
+  }
+}
 
 /** Which server number a chip shows, and what to call it.
  *

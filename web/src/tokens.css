@@ -1,12 +1,26 @@
 /* The single source of every color, duration, and font in this app.
  *
- * These values are frozen in DECISIONS.md section 9. No hex literal appears
- * anywhere else in the codebase -- components reference these custom
- * properties and nothing but these custom properties.
+ * Two layers, per DECISIONS.md section 9 and 13:
  *
- * --pink-hot is used by exactly one element: the primary number. At body size
- * it fails contrast against --pink-wash. That is intentional and it is the
- * enforcement mechanism (DECISIONS.md 9.1).
+ *   1. THEME LAYER (--theme-*): raw hex values, one block per preset,
+ *      selected by [data-theme="id"] on the root element.
+ *   2. SEMANTIC LAYER (--pink-hot, --pink-wash, --ink, etc.): the names
+ *      every component references, unchanged since Phase 2. Each one
+ *      indirects through the theme layer via var(). A theme is applied by
+ *      changing which theme-layer block is active -- the semantic names
+ *      themselves never change, even for a green or a dark theme. That is
+ *      a deliberate wart (renaming them would touch every component) and
+ *      is called out as such in DECISIONS.md 9.
+ *
+ * A hex literal still appears in this file and nowhere else in the repo:
+ * every preset's raw values, the fixed --chrome-safe-* set, and the
+ * --class-* swatches all live here exclusively.
+ *
+ * --pink-hot is used by exactly one element: the primary number. At body
+ * size it fails contrast against --pink-wash in every preset; that is
+ * intentional and is the enforcement mechanism (DECISIONS.md 9.1). It is
+ * checked at the large-text (3:1) threshold instead, matching the numeral's
+ * actual display size.
  */
 
 /* DECISIONS.md 9.4: vendored, served locally, never fetched. */
@@ -18,24 +32,111 @@
   font-display: block;
 }
 
-:root {
-  /* 9.1 Color */
-  --pink-hot: #ff2e88;
-  --pink-wash: #fff5f8;
-  --pink-surface: #ffe8f0;
-  --pink-edge: #ffc2da;
-  --ink: #2b1a22;
-  --rose-muted: #7a2e52;
+/* ------------------------------------------------------------------------ *
+ * THEME LAYER -- raw values only. One block per preset id (DECISIONS.md 13).
+ * [data-theme="pink"] and the bare :root are equal specificity; :root is
+ * written first, so any other block that matches wins by source order, and
+ * with no attribute set at all (before JS runs) or "pink", :root's own
+ * values are what resolve -- pink is the guaranteed fallback in every
+ * failure mode.
+ * ------------------------------------------------------------------------ */
 
-  /* 12.2 Class swatches. Pink-forward, and eight of them.
+:root,
+[data-theme="pink"] {
+  --theme-hot: #ff2e88;
+  --theme-wash: #fff5f8;
+  --theme-surface: #ffe8f0;
+  --theme-edge: #ffc2da;
+  --theme-ink: #2b1a22;
+  --theme-rose-muted: #7a2e52;
+}
+
+/* Deep jewel tone: emerald green. */
+[data-theme="jewel"] {
+  --theme-hot: #0b7a4b;
+  --theme-wash: #f2faf5;
+  --theme-surface: #dff3e7;
+  --theme-edge: #b7ddc8;
+  --theme-ink: #10261c;
+  --theme-rose-muted: #2f6b4f;
+}
+
+/* Warm neutral: sand and terracotta. */
+[data-theme="neutral"] {
+  --theme-hot: #b5651d;
+  --theme-wash: #faf6f0;
+  --theme-surface: #f0e6d8;
+  --theme-edge: #ddc9ab;
+  --theme-ink: #3a2e22;
+  --theme-rose-muted: #74563a;
+}
+
+/* Cool: slate blue. */
+[data-theme="cool"] {
+  --theme-hot: #2f6fed;
+  --theme-wash: #f3f6fb;
+  --theme-surface: #e2eaf5;
+  --theme-edge: #c3d3ea;
+  --theme-ink: #1c2733;
+  --theme-rose-muted: #4c6485;
+}
+
+/* High contrast: pure black, white, and gray -- no tint at all. */
+[data-theme="contrast"] {
+  --theme-hot: #b30000;
+  --theme-wash: #ffffff;
+  --theme-surface: #f2f2f2;
+  --theme-edge: #4d4d4d;
+  --theme-ink: #000000;
+  --theme-rose-muted: #333333;
+}
+
+/* Midnight: a genuine dark theme, light text on near-black plum. */
+[data-theme="midnight"] {
+  --theme-hot: #ff6ec7;
+  --theme-wash: #1b1420;
+  --theme-surface: #2a1f30;
+  --theme-edge: #4a3a57;
+  --theme-ink: #f3e9f5;
+  --theme-rose-muted: #c9a9d9;
+}
+
+/* ------------------------------------------------------------------------ *
+ * SEMANTIC LAYER -- the names every component uses. Declared exactly once;
+ * a custom theme overrides one or more of these directly via an inline
+ * style on the root, which wins over this stylesheet rule unconditionally
+ * (we never use !important), regardless of which preset is active.
+ * ------------------------------------------------------------------------ */
+
+:root {
+  --pink-hot: var(--theme-hot);
+  --pink-wash: var(--theme-wash);
+  --pink-surface: var(--theme-surface);
+  --pink-edge: var(--theme-edge);
+  --ink: var(--theme-ink);
+  --rose-muted: var(--theme-rose-muted);
+
+  /* Fixed, theme-immune. custom_theme's recognized keys never include
+   * these, and no preset block defines them -- structurally, not by
+   * styling discipline, so the "reset to preset" escape hatch in the
+   * theme editor stays legible even when every semantic token has been
+   * customized into illegibility (DECISIONS.md 13). */
+  --chrome-safe-bg: #ffffff;
+  --chrome-safe-text: #1a1a1a;
+  --chrome-safe-border: #4d4d4d;
+
+  /* 12.2 Class swatches. Pink-forward, and eight of them. Fixed regardless
+   * of the active theme -- they are a label palette for grouping entries,
+   * not part of the page's look, and section 13 only extends theming to
+   * the six semantic tokens above.
    *
    * --pink-hot is deliberately NOT among these: it belongs to the primary
    * number alone (9.1). Each of these is legible as a small dot on
    * --pink-surface at body size.
    *
    * The server has no palette. ClassManager reads these tokens by name at
-   * runtime and sends the resolved value, so the values live here and nowhere
-   * else -- section 9 holds with no carve-out. */
+   * runtime and sends the resolved value, so the values live here and
+   * nowhere else -- section 9 holds with no carve-out. */
   --class-rose: #e4557f;
   --class-berry: #b03a6b;
   --class-plum: #8e4a7d;

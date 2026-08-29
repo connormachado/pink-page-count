@@ -8,12 +8,16 @@ Project shape: single user, single machine, macOS, fully offline. No auth, no
 multi-user, no cloud, no database. **Durability of `data/entries.json` matters more
 than anything else in this project.**
 
-Status: Phase 4 of 4 — deployment. FastAPI now serves the built `web/dist` directly
-at `/`, so `run.command` is the only thing to double-click; there is no more
-two-server dance. An entry can carry an optional class for grouping and color;
-`data/classes.json` is a second file beside the entry log, and `data/entries.json`
-is at schema_version 2. `web/` holds a Vite + React + TypeScript front end built
-against section 9's tokens.
+Status: Phase 5 of 5 — settings and themes. A third data file,
+`data/settings.json`, holds theme choice, custom theme overrides, and the default
+chip (section 13). `web/src/tokens.css` is now two layers — a theme layer and the
+same semantic layer components have always referenced — so six preset themes and
+a custom theme editor exist without any component touching a token name it didn't
+already use. FastAPI serves the built `web/dist` directly at `/`, so `run.command`
+is the only thing to double-click; there is no more two-server dance. An entry can
+carry an optional class for grouping and color; `data/classes.json` is a second
+file beside the entry log, and `data/entries.json` is at schema_version 2. `web/`
+holds a Vite + React + TypeScript front end built against section 9's tokens.
 
 ---
 
@@ -412,6 +416,7 @@ grow.
 | `PAGECOUNT_PORT` | `8420` | port to bind |
 | `PAGECOUNT_DATA_FILE` | `data/entries.json` | entry data file path |
 | `PAGECOUNT_CLASSES_FILE` | `data/classes.json` | class data file path (section 12) |
+| `PAGECOUNT_SETTINGS_FILE` | `data/settings.json` | settings data file path (section 13) |
 | `PAGECOUNT_QUOTES_FILE` | `quotes.txt` | quote file path (section 10) |
 | `PAGECOUNT_DIST_DIR` | `web/dist` | built front end path (section 5) |
 
@@ -455,6 +460,8 @@ app/
                         One implementation, used by both data files.
   storage.py            entries.json: load, CRUD, write-through
   classes.py            classes.json: load, CRUD, write-through (12)
+  settings.py           settings.json: load, validate, write-through (13).
+                        Imports no storage, no classes
   models.py             pydantic request/response models
   stats.py              pages_today, streaks, first_entry_date
   quotes.py             quotes.txt -> today's quote. Imports no storage (10)
@@ -466,18 +473,30 @@ web/                    the front end (Phase 2). Vite + React + TypeScript,
                         FastAPI serves it directly (5). `web/node_modules`
                         stays gitignored.
   public/fonts/         Fraunces, vendored per 9.4
-  src/tokens.css        section 9, and the only place a hex literal appears --
-                        including the eight --class-* swatches (12.2)
+  src/tokens.css        section 9 and 13: the theme layer (raw values, one
+                        block per preset) and the semantic layer components
+                        reference, plus the eight --class-* swatches (12.2)
+                        and the fixed --chrome-safe-* set (13.4). The only
+                        place a hex literal appears anywhere in the repo
+  src/theme.ts          preset ids/labels, the semantic token list, and
+                        apply/read/paint-cache functions (13). No hex literal
+  src/contrast.ts       WCAG relative-luminance and contrast-ratio, hand
+                        rolled, no dependency (13.2)
   src/milestones.ts     crossedMilestone(). Arrivals only, never distances (11)
   src/useCountUp.ts     rAF count-up toward a server value (11)
   src/motion.ts         prefers-reduced-motion + duration tokens
   src/components/
     ClassPicker.tsx     inline, optional, never blocks a save (12.4)
     ClassManager.tsx    the collapsed <details>. Owns the palette (12.2)
+    SettingsPanel.tsx   the collapsed <details> beside it. Owns default_chip;
+                        mounts ThemeEditor (13)
+    ThemeEditor.tsx     preset picker, custom color inputs, contrast
+                        warnings, the reset-to-preset escape hatch (13.3)
 quotes.txt              the quotes, one per line. Source, not entry data (10)
 data/
   entries.json          the reading log (gitignored)
   classes.json          the classes (gitignored)
+  settings.json         theme, custom_theme, default_chip (gitignored, 13)
 ```
 
 `requirements.txt` holds runtime dependencies only, so `run.command` installs the
@@ -513,7 +532,7 @@ new, and the atomic write path was factored into `app/jsonfile.py` so both files
 one implementation (3.1). No existing endpoint changed shape; entry create and patch
 gained one optional field.
 
-**Phase 4 (this one): deployment.** FastAPI serves the built `web/dist` directly at `/`,
+**Phase 4: deployment.** FastAPI serves the built `web/dist` directly at `/`,
 with two narrow static mounts for `/assets` and `/fonts` and a friendly page if the
 front end hasn't been built yet -- so `run.command` is the only thing left to
 double-click, with no dev server and no second port. Added a backup/export button
@@ -521,6 +540,21 @@ double-click, with no dev server and no second port. Added a backup/export butto
 `update.command` for pulling new code without ever touching a dirty tree or starting
 the server, and `AppIcon.icns` for the Desktop launcher. `app/` gained one route and
 one config path; no existing schema, storage semantics, or endpoint shape changed.
+
+**Phase 5 (this one): settings and themes.** A settings system (section 13):
+`data/settings.json` is a third data file, storing `theme`, `custom_theme`, and
+`default_chip`; `app/settings.py` is new, shares the atomic write path and
+corrupt-file halt with the other two files, and cannot reach either of them.
+`GET`/`PATCH /api/settings` are new routes; no existing route, schema, or storage
+semantics changed. `web/src/tokens.css` was restructured into a theme layer and a
+semantic layer so six preset themes and a custom theme editor could be added
+without renaming a single token a component already used -- see 9 and 13.1 for why
+the semantic names are frozen even though this is the first phase where "pink" is
+no longer the only look. A first-paint localStorage cache was added, explicitly
+documented as a paint cache only, never a data source (13.4). `CLAUDE.md`'s phase
+count and this file's own status line are updated in this same commit for the same
+reason every other phase boundary gets written down here: so a future session does
+not have to guess whether "4 phases" or "the app is complete" is still true.
 
 Still ahead: the stats/graphs page and the pixel dog.
 
@@ -574,11 +608,32 @@ does not exist (4.3), which is the same structural move as omitting
 
 ## 9. Visual tokens
 
-Frozen starting values, implemented in Phase 2 as `web/src/tokens.css`. Every token
-below is a CSS custom property defined there and referenced everywhere else; **a hex
-literal appears in that file and nowhere else in the repo.**
+Implemented in `web/src/tokens.css`, and since Phase 5 (section 13) in **two layers**:
+
+1. **The theme layer** (`--theme-*`): raw hex values, one block per preset id,
+   selected by a `data-theme` attribute on the root element.
+2. **The semantic layer** (`--pink-hot`, `--pink-wash`, `--ink`, etc.): the names
+   every component references, declared exactly once, each indirecting through the
+   theme layer via `var()`.
+
+Every token a component actually uses is in the semantic layer; **a hex literal
+still appears in `tokens.css` and nowhere else in the repo** -- every preset's raw
+values, the fixed `--chrome-safe-*` set (13.3), and the `--class-*` swatches (12.2)
+all live there exclusively, same as before Phase 5.
+
+**The semantic names do not change when the active theme isn't pink.** A green or a
+near-black theme still populates `--pink-hot`. This is a deliberate wart: renaming
+the semantic tokens to something theme-neutral would touch every component that
+references them, for a purely cosmetic win, the first time this project would ever
+have made that trade. Section 13 is where this decision actually bites; it is
+recorded here because it amends this section's naming, not because §9 is where a
+future session should look to understand *why* -- that reasoning lives in 13.1.
 
 ### 9.1 Color
+
+The values below are the **`pink` preset** -- the original Phase 2 look, still the
+default, and still what the semantic layer resolves to whenever `data-theme` is
+absent (before JS runs) or explicitly `"pink"`. See 13.2 for the other five presets.
 
 | Token | Value | Used for |
 |---|---|---|
@@ -590,8 +645,10 @@ literal appears in that file and nowhere else in the repo.**
 | `--rose-muted` | `#7A2E52` | secondary text (dates, "that's N pages") |
 
 **`--pink-hot` is reserved for the primary number. It is never used for body text,
-buttons, borders, or chips. At body size it fails contrast against `--pink-wash`; this is
-intentional and is the enforcement mechanism.**
+buttons, borders, or chips. At body size it fails contrast against `--pink-wash` in
+every preset; this is intentional and is the enforcement mechanism.** Every preset
+is instead checked against the large-text (3:1) threshold for this pair, matching
+the numeral's actual display size -- see 13.2.
 
 ### 9.2 Motion
 
@@ -853,3 +910,137 @@ class name.
 §8 applies unchanged. A per-class breakdown is where this feature would turn into a
 scoreboard, and the way to prevent that is for the thing that would feed it to not
 exist.
+
+---
+
+## 13. Settings and themes
+
+A third file, `data/settings.json`, for the things that change how the app looks
+and which chip loads -- not what she has read. Nothing about how she reads is
+here; §8 does not need to say anything new for this section because nothing in it
+measures her.
+
+### 13.1 The file, and its isolation from the other two
+
+```json
+{
+  "schema_version": 1,
+  "settings": {
+    "theme": "pink",
+    "custom_theme": null,
+    "default_chip": "all_time"
+  }
+}
+```
+
+| Field | Type | Rules |
+|---|---|---|
+| `theme` | string | a preset id (13.2) or `"custom"`. Not nullable |
+| `custom_theme` | object \| null | semantic-token-name -> hex overrides (13.3), or null |
+| `default_chip` | string | `"all_time"` \| `"today"` \| `"streak"`. Not nullable |
+
+Shares `app/jsonfile.py`'s atomic write path and corrupt-file halt with the other
+two files (3.1, 3.4) -- there is still one implementation of both, not three. It
+does **not** reuse `envelope_list`: that helper's `<list_key>` is always a JSON
+array, and `settings` is an object, so `app/settings.py` validates the
+`{schema_version, settings: {...}}` wrapper with its own small check instead.
+
+A missing file is created with the defaults above (3.3). A file present but
+missing one of the three keys, or failing a per-field check, is corruption (3.4) --
+this file follows the same strict rule `classes.py`/`storage.py` already apply to
+a missing required record field, rather than inventing a lenient "fill in the
+default" exception just for this one file.
+
+**`app/settings.py` imports nothing from `storage` or `classes`, and neither of
+those imports it.** A feature about how the page looks has no business being able
+to touch the reading log or the class list -- the same structural separation §10
+gives quotes and §12.1 gives classes. Enforced by an AST-based test, the same way
+10 and 12.1 are.
+
+### 13.2 Preset themes
+
+Six presets, each defining the full six-token semantic set (9.1). `pink` is the
+original Phase 2 look and the default. The other five have genuine range -- a deep
+jewel tone, a warm neutral, a cool one, a high-contrast one with no tint at all,
+and a genuine dark theme -- not six shades of pink.
+
+| id | description |
+|---|---|
+| `pink` | the original look, default |
+| `jewel` | deep emerald |
+| `neutral` | warm sand |
+| `cool` | cool slate blue |
+| `contrast` | pure black, white, and gray |
+| `midnight` | dark: light text on near-black |
+
+**The server has no colors.** It validates that `theme` is one of these six ids or
+`"custom"`, and nothing more -- the same "no palette" rule 12.2 gives classes. The
+actual hex values live in `web/src/tokens.css` exclusively (9), named by id in
+`web/src/theme.ts`. The two id lists (`app/settings.py::THEME_IDS` and
+`web/src/theme.ts::PRESETS`) must be kept in sync by hand; each side has a comment
+pointing at the other.
+
+Every preset is tested for contrast: body text (`--ink` or `--rose-muted`) against
+its background clears 4.5:1, and `--pink-hot` against `--pink-wash` clears 3:1 --
+the large-text threshold, matching the numeral's actual display size. A theme that
+makes her log unreadable is a bug, the test asserts it for all six presets, and it
+reads the real `tokens.css` rather than a hex fixture that could drift from it.
+
+### 13.3 Custom themes and the escape hatch
+
+`theme: "custom"` with a `custom_theme` object of one-or-more `{semantic-token-name:
+hex}` overrides -- the semantic token's own CSS custom-property name
+(`--pink-hot`, `--ink`, ...), used verbatim as the JSON key, not a second encoding
+of it. A PATCH's `custom_theme` replaces the field wholesale, the same "a field
+that was sent is the new value in full" rule every other field in this API already
+follows -- there is no partial merge inside the object.
+
+Applied as inline style properties on the document root, which win over the active
+preset's stylesheet rule for that token unconditionally (this project never uses
+`!important`) -- so a one-token override composes with any preset underneath it,
+and an untouched token still falls through to whatever preset is selected.
+
+The editor warns, in `--rose-muted`, when a chosen pair falls under 4.5:1. It never
+blocks -- it's her app, and a warning is not a scolding (§8's spirit, applied to a
+color picker rather than a reading stat).
+
+**The reset-to-preset control is the one piece of UI in this app styled with
+tokens no theme or override can ever reach:** three fixed properties,
+`--chrome-safe-bg`/`--chrome-safe-text`/`--chrome-safe-border`, declared once in
+`tokens.css` outside every `[data-theme]` block. `custom_theme`'s recognized keys
+never include them, by construction -- so this is the one control guaranteed
+legible no matter how illegible the rest of the page has become, which is the
+whole point of an escape hatch.
+
+### 13.4 First paint: a cache, never a second source of truth
+
+The theme must apply before first paint, and `GET /api/settings` cannot answer
+before the page has painted something. The resolved theme is mirrored into
+`localStorage` as a **paint cache only**, read synchronously by a small inline
+script in `web/index.html` -- before any module script runs, so the key name and
+token list there are necessarily literal, not imported.
+
+**This is not a second place data lives.** `settings.json` remains the sole source
+of truth; a cleared or corrupted cache loses nothing -- it simply means one extra
+frame at the `pink` default before the real fetch resolves and reconciles it. Every
+other place in this project that touches the browser's storage does not exist
+(§7.1, §10, §12); this is the first, and the reason it's safe is that nothing here
+is ever read back as data, only as a guess to paint quickly.
+
+### 13.5 `default_chip`
+
+The chip shown when the page loads comes from this setting, defaulting to
+`all_time`. Note the vocabulary mismatch with the front end's own `StatKey`
+(`"all"`, not `"all_time"`) -- `web/src/stat.ts::chipFromSetting` is the one place
+that translates between them.
+
+Selecting a chip during a session is exactly what it was before this phase: local
+state, gone on reload, and it never writes the setting. Only the settings panel
+does that. Changing the setting does not retroactively move whatever chip she's
+currently looking at -- it takes effect on the next load, matching "the chip
+selected on load" and nothing more.
+
+### 13.6 The settings panel
+
+Same collapsed `<details>` pattern as the class manager (12.4), beside it, closed
+by default, off any save path. No router -- §6 still says no router.

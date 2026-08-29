@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
@@ -11,6 +11,10 @@ afterEach(() => {
 
 const number = () => screen.getByTestId("big-number").textContent;
 
+/** The main chip row, scoped away from the settings panel's own default-chip
+ * control, which reuses the same three labels (DECISIONS.md 13). */
+const chips = () => within(screen.getByRole("group", { name: "Which number to show" }));
+
 describe("chips choose which server number is displayed", () => {
   it("starts on All-time and switches to today's and the streak count", async () => {
     stubFetch({ entries: { body: [ENTRY] } });
@@ -18,21 +22,21 @@ describe("chips choose which server number is displayed", () => {
     render(<App />);
 
     await waitFor(() => expect(number()).toBe(String(STATS.pages_all_time)));
-    expect(screen.getByRole("button", { name: "All-time" })).toHaveAttribute(
+    expect(chips().getByRole("button", { name: "All-time" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
     expect(screen.getByText("pages, all time")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Today" }));
+    await user.click(chips().getByRole("button", { name: "Today" }));
     expect(number()).toBe(String(STATS.pages_today));
     expect(screen.getByText("pages today")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Streak" }));
+    await user.click(chips().getByRole("button", { name: "Streak" }));
     expect(number()).toBe(String(STATS.current_streak_days));
     expect(screen.getByText("days in a row")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "All-time" }));
+    await user.click(chips().getByRole("button", { name: "All-time" }));
     expect(number()).toBe(String(STATS.pages_all_time));
   });
 
@@ -44,8 +48,8 @@ describe("chips choose which server number is displayed", () => {
     await waitFor(() => expect(number()).toBe(String(STATS.pages_all_time)));
     const callsAfterLoad = fetchMock.mock.calls.length;
 
-    await user.click(screen.getByRole("button", { name: "Today" }));
-    await user.click(screen.getByRole("button", { name: "Streak" }));
+    await user.click(chips().getByRole("button", { name: "Today" }));
+    await user.click(chips().getByRole("button", { name: "Streak" }));
 
     expect(fetchMock.mock.calls.length).toBe(callsAfterLoad);
   });

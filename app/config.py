@@ -10,6 +10,7 @@ from pathlib import Path
 # class_id was added (1.4).
 ENTRIES_SCHEMA_VERSION = 2
 CLASSES_SCHEMA_VERSION = 1
+SETTINGS_SCHEMA_VERSION = 1
 
 # The entry log is the file this project exists to protect, so its version is the one
 # an unqualified SCHEMA_VERSION means.
@@ -22,6 +23,7 @@ DEFAULT_PORT = 8420
 PORT_ENV = "PAGECOUNT_PORT"
 DATA_FILE_ENV = "PAGECOUNT_DATA_FILE"
 CLASSES_FILE_ENV = "PAGECOUNT_CLASSES_FILE"
+SETTINGS_FILE_ENV = "PAGECOUNT_SETTINGS_FILE"
 QUOTES_FILE_ENV = "PAGECOUNT_QUOTES_FILE"
 DIST_DIR_ENV = "PAGECOUNT_DIST_DIR"
 
@@ -29,6 +31,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DATA_FILE = REPO_ROOT / "data" / "entries.json"
 # DECISIONS.md 12.1: classes live beside the entry log, never inside it.
 DEFAULT_CLASSES_FILE = REPO_ROOT / "data" / "classes.json"
+# DECISIONS.md 13: settings are a third file, beside the other two, for the same
+# reason classes are -- a feature about presentation has no business being able to
+# rewrite the reading log.
+DEFAULT_SETTINGS_FILE = REPO_ROOT / "data" / "settings.json"
 # DECISIONS.md 10: quotes are source, not entry data, and live in their own file
 # at the repo root where she can open them in any text editor.
 DEFAULT_QUOTES_FILE = REPO_ROOT / "quotes.txt"
@@ -49,6 +55,16 @@ def classes_file() -> Path:
     """
     override = os.environ.get(CLASSES_FILE_ENV)
     return Path(override).expanduser() if override else DEFAULT_CLASSES_FILE
+
+
+def settings_file() -> Path:
+    """Path to the settings file, overridable for tests via PAGECOUNT_SETTINGS_FILE.
+
+    A separate file from data_file() and classes_file(), and always will be -- see
+    DECISIONS.md 13.
+    """
+    override = os.environ.get(SETTINGS_FILE_ENV)
+    return Path(override).expanduser() if override else DEFAULT_SETTINGS_FILE
 
 
 def quotes_file() -> Path:
