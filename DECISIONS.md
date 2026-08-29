@@ -506,11 +506,16 @@ web/                    the front end (Phase 2). Vite + React + TypeScript,
   src/milestones.ts     crossedMilestone(). Arrivals only, never distances (11)
   src/useCountUp.ts     rAF count-up toward a server value (11)
   src/motion.ts         prefers-reduced-motion + duration tokens
+  src/useRailLayout.ts  RAIL_MIN_WIDTH_PX and the matchMedia hook that decides
+                        rails vs. stacked. The breakpoint lives here only (17.2)
   src/components/
     ClassPicker.tsx     inline, optional, never blocks a save (12.4)
-    ClassManager.tsx    the collapsed <details>. Owns the palette (12.2)
-    SettingsPanel.tsx   the collapsed <details> beside it. Owns default_chip;
-                        mounts ThemeEditor (13)
+    ClassManager.tsx    Owns the palette (12.2). Stacked <details> or bare
+                        inside the right rail, per its `chrome` prop (17.4)
+    SettingsPanel.tsx   Owns default_chip; mounts ThemeEditor (13). Same two
+                        chromes; the left rail on a wide window (17.4)
+    Rail.tsx            one collapsible edge rail: fixed position, one toggle,
+                        vertical label. Exports PanelChrome (17)
     ThemeEditor.tsx     preset picker, custom color inputs, contrast
                         warnings, the reset-to-preset escape hatch (13.3)
 quotes.txt              the canonical quotes, one per line. Source, not entry
@@ -955,8 +960,14 @@ Friction on the save path is the enemy. So:
   an old entry shows its own class even if archived, so an edit can never silently strip
   it.
 
-Management — create, rename, recolor, archive, delete — lives in a collapsed `<details>`
-below the entry list, off the save path. There is still no router (§6).
+Management — create, rename, recolor, archive, delete — lives off the save path,
+closed by default. There is still no router (§6).
+
+**Amended by 17.** "Below the entry list" is now true only on a narrow window. At
+or above 1456px the same panel is the collapsed **right rail**, and the collapsed
+`<details>` is not mounted at all. What is unconditional — off the save path,
+closed by default, one word of label, no count beside a class name — is unchanged;
+only where it sits is.
 
 ### 12.5 What classes deliberately are not
 
@@ -1101,8 +1112,13 @@ selected on load" and nothing more.
 
 ### 13.6 The settings panel
 
-Same collapsed `<details>` pattern as the class manager (12.4), beside it, closed
-by default, off any save path. No router -- §6 still says no router.
+Same pattern as the class manager (12.4), beside it, closed by default, off any
+save path. No router -- §6 still says no router.
+
+**Amended by 17.** The `<details>` is now the narrow-window chrome only. At or
+above 1456px this panel is the collapsed **left rail**, opposite Classes on the
+right, and only one of the two chromes is ever mounted (17.4). Closed by default
+and off the save path either way.
 
 ---
 
@@ -1671,3 +1687,211 @@ and the environment stripped to `env -i` (15.5's conditions):
 
 **Not fixed here, and unchanged:** B3, B4, B5, S1–S7, and 15.6's signing and
 architecture problems. This section was scoped to lifecycle.
+
+---
+
+## 17. The three-region layout: two edge rails around a fixed center
+
+Settings and Classes used to sit stacked *below* the entry log — the two
+collapsed `<details>` of 12.4 and 13.6. That put both of them behind the whole
+list: to change a theme or rename a class she scrolled past every entry she had
+ever logged, and the further she got with the app the further away its own
+controls moved. The fix is to stop making the log the path to them.
+
+On a wide window the page is three regions:
+
+```
+  LEFT RAIL          CENTER (unchanged)           RIGHT RAIL
+  Settings           quote                        Classes
+  collapsed          number                       collapsed
+  by default         chips                        by default
+                     entry form
+                     entry log
+                     backup link
+```
+
+The center's content and its order are **exactly** what they were. This section
+moves two panels out of the column; it changes nothing inside it.
+
+### 17.1 The center column cannot move, structurally
+
+**Expanding or collapsing a rail does not change the center column's width or
+its horizontal position by any amount, including a subpixel one.**
+
+This is not a set of widths that happen to add up. Each rail is
+`position: fixed`, so it is **out of flow entirely** — it has no ability to
+displace or resize a sibling, whatever width it animates to. A future edit that
+changed a rail's width, its padding, or its content could not break the
+guarantee without first deleting `position: fixed`, which is the property the
+guarantee is made of.
+
+Measured in Chrome, all four rail states (both closed, left open, right open,
+both open), `main`'s bounding rect:
+
+| viewport | x | width |
+|---|---|---|
+| 1440 | 384.00 | 672.00 |
+| 1024 | 176.00 | 672.00 |
+| 768 | 48.00 | 672.00 |
+
+Identical in all four states at every width — not "within a pixel", the same
+number. A 1-digit number sits at offset **0.00px** from both the column's centre
+and the viewport's, in every state and at every width, still 144px Fraunces in
+`--pink-hot`.
+
+### 17.2 The breakpoint is 1456px, and the numeral is what sets it
+
+Below `RAIL_MIN_WIDTH_PX` (`web/src/useRailLayout.ts`, **1456**) there are no
+rails: both panels stack under the entry log exactly as before, and `App`
+renders no `Rail` at all. The constant lives in that one file and the CSS has no
+media query of its own, so there is no second copy to drift.
+
+1456 is not a taste value and it is not derived from the column. The column's
+box is 672px and an open rail is 320px, which would already fit at 1312. **The
+binding constraint is the all-time number.** At its 144px display size a 9-digit
+total sets **704.09px of ink** inside a content box only 632px wide, and an
+over-wide centred text run **overflows to one side, not two** — in LTR it starts
+at the content box's left edge and bleeds ~72px past its right. So the ink sits
+far closer to the right rail than the left, and only the right rail can ever
+reach it:
+
+```
+ink.right    = (W - 672) / 2 + 20 + 704.09
+right rail   = W - 320
+clearance(W) = W / 2 - 708.09
+```
+
+Clearance is **negative — a real overlap — below 1417**, and reaches a full 1rem
+at 1456. Measured in Chrome with both rails open, taking the ink from the text
+run's own rect rather than the element's:
+
+| W | right clearance |
+|---|---|
+| 1400 | **−8.09** (overlap) |
+| 1416 | **−0.09** (overlap) |
+| 1417 | 0.41 |
+| 1440 | 11.91 |
+| **1456** | **19.91** |
+| 1512 | 47.91 |
+
+An earlier pass set this to 1400 on the assumption that an over-wide centred run
+overflows symmetrically — 32px split evenly, ~28px of clearance. It does not,
+and at 1400 the rail genuinely covered the last digits. **The element's rect
+understates the numeral: it is clipped to the column, so it reports 672px for
+704px of ink.** Anything re-checking this must measure the text run
+(`Range.selectNodeContents` → `getBoundingClientRect`), not the element.
+
+1456 is the 16px-grid width that leaves at least a full `1rem` of clearance:
+19.91px to the numeral's ink and 76px to the column box, at the narrowest width
+where rails exist at all. Swept continuously from 320 to 1920 in 8px steps, with
+both rails forced open at every step: the rail count changes exactly once
+(1448 → 1456), and there is **no width at which a rail overlaps the numeral's
+ink or the column box, and none where either layout is mounted twice.**
+
+The numeral overflowing its column at narrow widths is **pre-existing** and is
+not touched here: A/B'd against `main`'s `dist`, `scrollWidth` is identical at
+every width. Making the number reflow to avoid a rail was rejected — the center
+is not what this section is allowed to change.
+
+### 17.3 Open/closed is UI state and is never persisted
+
+A rail's open state lives in `App`'s `useState` and nowhere else. **It is not
+written to `settings.json`, not sent to the server, and not in `localStorage`.**
+A reload starts with both rails shut.
+
+It is where she is looking right now, not a fact about her app. `settings.json`
+holds three things (13.1) and this is not a fourth. The test asserts it
+structurally: opening both rails issues **zero** non-GET requests apart from the
+heartbeat.
+
+Both rails may be open at once; neither knows about the other.
+
+### 17.4 One panel body, two chromes
+
+`SettingsPanel` and `ClassManager` take a `chrome?: "details" | "bare"` prop.
+`"details"` is the original stacked card of 12.4 and 13.6; `"bare"` is the same
+body with no wrapper, because the rail already supplies the card, the label and
+the disclosure. **The controls inside are identical in both** — the prop picks
+the frame, never the contents.
+
+Exactly one instance of each panel is mounted at a time. `App` renders the
+stacked pair *or* the rails, never both, so there is never a second copy of a
+form holding its own state. Verified across the whole 320–1920 sweep.
+
+### 17.5 No new copy, and no new color
+
+A rail's only text is the one word the collapsed `<summary>` already carried —
+"Settings", "Classes". A **collapsed rail is not an empty state**: it gets no
+explanatory text, no hint about what is inside, no count of anything. The
+chevron is `aria-hidden` decoration, not a word. §8 is unchanged and nothing
+here can read as a reprimand.
+
+Every color is a semantic token already in use: `--pink-surface` for the rail,
+`--pink-edge` for its 1px separator and hover, `--rose-muted` for the label,
+`--ink` on hover. **The rails introduce no new surface**, so 13.2's contrast
+suite needed no new case — `--rose-muted` on `--surface` is a pair it already
+asserts at 4.5:1 for all six presets, and `--ink` on `--pink-edge` is the same
+pairing chips, buttons and the class picker have always used. Confirmed by
+reading the *painted* colors in Chrome, per preset, with both rails open:
+
+| preset | label on rail |
+|---|---|
+| pink | 7.71 |
+| jewel | 5.43 |
+| neutral | 5.43 |
+| cool | 4.99 |
+| contrast | 11.29 |
+| midnight | 7.60 |
+
+All clear 4.5:1, High contrast and Midnight included.
+
+### 17.6 Keyboard, focus, and motion
+
+One button per rail, not two. The vertical tab stays at the viewport edge in
+both states and the panel grows inward beside it, so **the control that opens a
+rail is the control that closes it** and focus never goes anywhere on toggle.
+
+- `aria-expanded` tracks the state; `aria-controls` points at the panel's real
+  element id.
+- The panel's `visibility` flips to `hidden` only **after** the fade finishes, so
+  a closed rail's 16 focusable controls leave the tab order and the
+  accessibility tree instead of staying reachable behind an invisible panel.
+- The focus ring is inset (`outline-offset: -3px`). The rail clips its overflow
+  and is pinned to the viewport edge, so the default outside ring would have had
+  half of it off screen.
+- Width and opacity animate with `--dur-ui` (180ms) and nothing else. The
+  existing `prefers-reduced-motion` reset in `index.css` already covers them:
+  measured, 0.18s becomes 0.00001s under `reduce`.
+
+Verified in Chrome: the tab is reached by `Tab`, shows a 2px `--rose-muted`
+focus-visible ring, and `Enter` toggles it in both directions with focus still
+on the tab afterwards.
+
+### 17.7 What is verified
+
+**Front end: 108 tests**, up from 102. `rails.test.tsx` covers the rails
+mounting shut on a wide window, toggling from their own button, both open at
+once, keyboard operation, the stacked fallback on a narrow one, and the
+zero-writes assertion of 17.3. `setRailLayout()` in `helpers.ts` answers the
+breakpoint query; the default `matchMedia` stub answers false to everything, so
+**every test written before the rails still exercises the stacked layout
+unchanged**. Backend: **253**, untouched — this section adds no route, no field,
+and no server code.
+
+In Chrome, against the built `dist` the server actually serves:
+
+- **Center column identical** in all four rail states at 1440/1024/768 (17.1).
+- **No overlap at any width** from 320 to 1920, ink measured from the text run
+  (17.2). Rail count transitions exactly once.
+- **1-digit number** still 144px and centred to 0.00px, rails open or shut.
+- **Console clean** — zero errors and zero exceptions — and **every asset and API
+  call 200** (`/`, the hashed css and js, `/api/stats|entries|classes|settings|
+  quote`, the heartbeat's 204, and the vendored Fraunces woff2). No external
+  request of any kind: §9.4 holds. The opportunistic `favicon.ico` 404 is
+  pre-existing and appears identically on `main`.
+- **All six presets** render both rails, contrast re-checked on the painted
+  colors (17.5).
+
+**Not fixed here, and unchanged:** B3, B4, B5, S1–S7. This section was scoped to
+layout: no stat changed what it computes, no endpoint changed what it returns,
+and no copy changed anywhere.

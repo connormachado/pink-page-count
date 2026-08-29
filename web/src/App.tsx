@@ -7,12 +7,14 @@ import { EmptyNumber } from "./components/EmptyNumber";
 import { EntryForm } from "./components/EntryForm";
 import { ClassManager } from "./components/ClassManager";
 import { EntryList } from "./components/EntryList";
+import { Rail, type PanelChrome } from "./components/Rail";
 import { SaveConfirmation } from "./components/SaveConfirmation";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { crossedMilestone } from "./milestones";
 import { FALLBACK_QUOTE, fetchQuote } from "./quote";
 import { chipFromSetting, selectStat, type StatKey } from "./stat";
 import { applyTheme, readResolvedTheme, writePaintCache, type SemanticToken } from "./theme";
+import { useRailLayout } from "./useRailLayout";
 import type { Class, Entry, Settings, Stats } from "./types";
 
 /** What a refresh was caused by. Only "save" -- a brand new entry -- may count
@@ -46,6 +48,14 @@ export default function App() {
   const [quote, setQuote] = useState(FALLBACK_QUOTE);
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const [milestone, setMilestone] = useState<number | null>(null);
+
+  /** Whether the window is wide enough for the two edge rails, and whether
+   * each one is open. Purely where she is looking right now: none of it is
+   * sent to the server or written to settings.json, and a reload starts with
+   * both rails shut again (DECISIONS.md 17). */
+  const railed = useRailLayout();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [classesOpen, setClassesOpen] = useState(false);
 
   /** Bumped on a successful save. BigNumber counts up when it changes and
    * lands instantly on every other kind of change. */
@@ -192,68 +202,112 @@ export default function App() {
   // 7am is an ordinary morning and still renders a 0 (DECISIONS.md 11).
   const nothingLoggedYet = stats.entry_count === 0;
 
+  // The same two panels, in whichever frame the window is wide enough for.
+  // One instance of each is mounted at a time -- a rail and a stacked card
+  // are two chromes around one body, never two copies of it (DECISIONS.md
+  // 17). A class or settings change is an ordinary "change" refresh in both:
+  // it never counts up and never celebrates (11.2, 12.4, 13).
+  const classManager = (chrome: PanelChrome) => (
+    <ClassManager
+      chrome={chrome}
+      classes={classes}
+      onChanged={() => refresh("change")}
+      onUnreachable={() => setUnreachable(true)}
+    />
+  );
+
+  const settingsPanel = (chrome: PanelChrome) => (
+    <SettingsPanel
+      chrome={chrome}
+      settings={settings}
+      resolvedTheme={resolvedTheme}
+      onChanged={() => refresh("change")}
+      onUnreachable={() => setUnreachable(true)}
+    />
+  );
+
   return (
-    <Shell>
-      <p className="text-center text-[var(--rose-muted)]">{quote}</p>
+    <>
+      <Shell>
+        <p className="text-center text-[var(--rose-muted)]">{quote}</p>
 
-      {nothingLoggedYet ? (
-        <EmptyNumber />
-      ) : (
+        {nothingLoggedYet ? (
+          <EmptyNumber />
+        ) : (
+          <>
+            <BigNumber value={value} label={label} countToken={countToken} />
+            <Chips selected={selected} onSelect={setSelected} />
+          </>
+        )}
+
+        <SaveConfirmation message={confirmation} />
+        <Celebration milestone={milestone} />
+
+        <EntryForm
+          onSaved={() => refresh("save")}
+          onUnreachable={() => setUnreachable(true)}
+          classes={classes}
+          entries={entries}
+        />
+
+        <EntryList
+          entries={entries}
+          classes={classes}
+          onChanged={() => refresh("change")}
+          onUnreachable={() => setUnreachable(true)}
+        />
+
+        {/* Narrow windows only: the two panels stack under the entry log,
+            exactly where they lived before the rails existed. Above the
+            breakpoint they are rendered below instead, and nothing here is
+            mounted (DECISIONS.md 17). */}
+        {railed ? null : (
+          <>
+            {classManager("details")}
+            {settingsPanel("details")}
+          </>
+        )}
+
+        {/* A backup, not a feature: a plain link, no fetch/blob JS. The browser
+            triggers the download itself from the Content-Disposition header the
+            server sends back (DECISIONS.md 4.4). It is not Settings and it is
+            not Classes, so the rails left it where it was: last, and out of
+            the way. */}
+        <a
+          href="/api/export"
+          className="text-center text-sm text-[var(--rose-muted)] underline
+                     underline-offset-2 transition-colors duration-[var(--dur-ui)]
+                     hover:text-[var(--ink)]"
+        >
+          Download a backup
+        </a>
+      </Shell>
+
+      {/* Fixed to the viewport edges, so neither one can shift the column
+          above by a pixel however it is opened (DECISIONS.md 17). Both may
+          be open at once; neither remembers that it was. */}
+      {railed ? (
         <>
-          <BigNumber value={value} label={label} countToken={countToken} />
-          <Chips selected={selected} onSelect={setSelected} />
+          <Rail
+            side="left"
+            label="Settings"
+            open={settingsOpen}
+            onToggle={() => setSettingsOpen((open) => !open)}
+          >
+            {settingsPanel("bare")}
+          </Rail>
+
+          <Rail
+            side="right"
+            label="Classes"
+            open={classesOpen}
+            onToggle={() => setClassesOpen((open) => !open)}
+          >
+            {classManager("bare")}
+          </Rail>
         </>
-      )}
-
-      <SaveConfirmation message={confirmation} />
-      <Celebration milestone={milestone} />
-
-      <EntryForm
-        onSaved={() => refresh("save")}
-        onUnreachable={() => setUnreachable(true)}
-        classes={classes}
-        entries={entries}
-      />
-
-      <EntryList
-        entries={entries}
-        classes={classes}
-        onChanged={() => refresh("change")}
-        onUnreachable={() => setUnreachable(true)}
-      />
-
-      {/* Out of the way, below everything, and closed by default. A class
-          change is an ordinary "change" refresh: it never counts up and never
-          celebrates (DECISIONS.md 11.2, 12.4). */}
-      <ClassManager
-        classes={classes}
-        onChanged={() => refresh("change")}
-        onUnreachable={() => setUnreachable(true)}
-      />
-
-      {/* Same "out of the way" slot as ClassManager, right beside it. A
-          settings change is an ordinary "change" refresh too (DECISIONS.md
-          13). */}
-      <SettingsPanel
-        settings={settings}
-        resolvedTheme={resolvedTheme}
-        onChanged={() => refresh("change")}
-        onUnreachable={() => setUnreachable(true)}
-      />
-
-      {/* A backup, not a feature: a plain link, no fetch/blob JS. The browser
-          triggers the download itself from the Content-Disposition header the
-          server sends back (DECISIONS.md 4.4). Out of the way, like ClassManager
-          above it. */}
-      <a
-        href="/api/export"
-        className="text-center text-sm text-[var(--rose-muted)] underline
-                   underline-offset-2 transition-colors duration-[var(--dur-ui)]
-                   hover:text-[var(--ink)]"
-      >
-        Download a backup
-      </a>
-    </Shell>
+      ) : null}
+    </>
   );
 }
 

@@ -1,5 +1,6 @@
 import { vi } from "vitest";
 import { CLASS_TOKENS } from "../palette";
+import { RAIL_MIN_WIDTH_PX } from "../useRailLayout";
 import type { Class, Entry, Settings, Stats } from "../types";
 
 export const STATS: Stats = {
@@ -152,6 +153,28 @@ export function setReducedMotion(reduced: boolean) {
     "matchMedia",
     (query: string) => ({
       matches: reduced && query.includes("prefers-reduced-motion: reduce"),
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  );
+}
+
+/** Answer the rail breakpoint query the way a test needs it.
+ *
+ * The default stub in test-setup.ts answers false to everything, so every
+ * test that does not call this sees the stacked layout -- which is what the
+ * whole suite predating the rails was written against (DECISIONS.md 17).
+ * Cleared by vi.unstubAllGlobals() in each file's afterEach. */
+export function setRailLayout(wide: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    (query: string) => ({
+      matches: wide && query.includes(`min-width: ${RAIL_MIN_WIDTH_PX}px`),
       media: query,
       onchange: null,
       addListener: () => {},
