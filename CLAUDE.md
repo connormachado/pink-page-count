@@ -23,6 +23,20 @@ wrong, stop and say so — do not work around it.
   say why.
 - Ask before adding any runtime dependency.
 
+## Commits and merges
+
+You manage git for this project. Commit your own work with clear messages,
+merge your branch when the session's verification passes, and say what you
+did. Do not wait for approval on git operations. Never rewrite history on
+main. Never commit anything under DATA_ROOT.
+
+## Browser verification
+
+You have Claude in Chrome. For any front-end work, verify in the browser
+rather than reasoning about the DOM: load the page, check rendering at the
+widths named in the brief, read the console for errors, and confirm network
+requests for assets return 200. "It should render" is not verification.
+
 ## Commands
 
 Run these from the repo root. Never assume an activated venv — always
