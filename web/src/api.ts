@@ -2,6 +2,7 @@ import type {
   Class,
   ClassCreate,
   ClassPatch,
+  DailyQuote,
   Entry,
   EntryCreate,
   EntryPatch,
@@ -61,7 +62,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   stats: () => request<Stats>("/api/stats"),
-  quote: () => request<{ quote: string }>("/api/quote"),
+  quote: () => request<DailyQuote>("/api/quote"),
   entries: () => request<Entry[]>("/api/entries"),
   create: (entry: EntryCreate) =>
     request<Entry>("/api/entries", { method: "POST", body: JSON.stringify(entry) }),

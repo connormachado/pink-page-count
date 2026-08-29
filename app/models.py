@@ -191,14 +191,20 @@ class SettingsOut(BaseModel):
 
 
 class QuoteOut(BaseModel):
-    """The /api/quote payload. One string, and never anything from the entry log.
+    """The /api/quote payload. Words and a name, never anything from the entry log.
 
     DECISIONS.md 10: the quote path and the reading log are separate by
     construction. This model carries no entry data because the handler that
     fills it has none.
+
+    DECISIONS.md 10.1 (amended): `text` replaces the old bare `quote` string
+    and `attribution` joins it. `attribution` is null far more often than not
+    -- every hand-written line in the user's own file has none -- so null is
+    the ordinary case, and the front end renders nothing at all for it (10.2).
     """
 
-    quote: str
+    text: str
+    attribution: str | None
 
 
 def to_out(entry: dict[str, Any]) -> dict[str, Any]:

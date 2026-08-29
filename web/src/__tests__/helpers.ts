@@ -76,6 +76,12 @@ export function removePalette() {
 }
 
 export const QUOTE = "A book met you where you were today, and that was enough.";
+export const ATTRIBUTION = "Someone Who Said It";
+
+/** The default /api/quote body: attributed, because that is now the shape most
+ * bundled lines have. A test that wants the bare case overrides `quote`. */
+export const QUOTE_BODY = { text: QUOTE, attribution: ATTRIBUTION };
+export const UNATTRIBUTED_QUOTE_BODY = { text: QUOTE, attribution: null };
 
 type Route = { status?: number; body?: unknown };
 
@@ -125,7 +131,7 @@ export function stubFetch(routes: {
           : routes.patch;
     else if (method === "DELETE")
       route = (isClass ? routes.classDelete : routes.delete) ?? { status: 204 };
-    else if (url.includes("/api/quote")) route = routes.quote ?? { body: { quote: QUOTE } };
+    else if (url.includes("/api/quote")) route = routes.quote ?? { body: QUOTE_BODY };
     else if (url.includes("/api/stats")) route = routes.stats ?? { body: STATS };
     else if (isSettings) route = routes.settings ?? { body: SETTINGS };
     else if (isClass) route = routes.classes ?? { body: [] };
