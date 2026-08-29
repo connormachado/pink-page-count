@@ -1588,6 +1588,30 @@ it must not halt a launch that is only going to open a browser tab at a server
 already serving happily. That ordering — probe first, load second — is the whole
 reason the probe is the first thing `main()` does.
 
+**"Open the browser at it" means a new tab, every time.** It does not go looking
+for a tab already showing the app to focus instead, and that is a choice rather
+than an omission. `webbrowser` on macOS runs `osascript` with
+`open location "…"`, which always creates a tab; no browser treats it as "reveal
+the one that is already open."
+
+Making it reveal instead would mean per-browser AppleScript — Chrome, Safari,
+Arc and Edge each need different code to walk windows and set an active tab
+index, and Firefox has no AppleScript tab API at all, so it would get a new tab
+regardless. That is a browser-compatibility matrix inside a reading tracker, to
+save a Cmd-W, and it is the same GUI integration 16.3 declines everywhere else.
+One behavior on every browser, and it is the obvious one: you asked for the app,
+here is the app.
+
+What that costs, stated plainly, because it follows from 16.2 and is the part
+worth knowing: double-click three times and there are three tabs on the same
+server, all beating. Closing one of them does not end the app — it ends five
+minutes after the *last* one closes. That is 16.2 working as written ("the tab
+is the window" is really "the tabs are the window"), not a leak.
+
+None of this was observable until **16.5**: from Finder, this branch never ran,
+so the first person to see a second tab appear was the first person to
+double-click the icon after that fix landed.
+
 **Why the probe is two steps.** A bare TCP connect, then the HTTP GET.
 "Connection refused" and "answered with something unexpected" are genuinely
 different answers, and folding them into one `except URLError` is exactly how
