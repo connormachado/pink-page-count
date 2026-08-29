@@ -1,27 +1,80 @@
-# One quote per line. Blank lines and lines starting with '#' are ignored.
-# Edit this file however you like -- add your own, delete the ones you don't
-# love. Save it and reload the page; the app picks it up with no restart.
+# Pink Page Count — bundled quotes
 #
-# This file has nothing to do with your reading log. Nothing you do here can
-# touch data/entries.json.
-
-Every page you read is one you didn't have before.
-A book met you where you were today, and that was enough.
-Reading is just paying attention to something beautiful for a while.
-There is no wrong pace. There is only the next page.
-You are allowed to love a book slowly.
-A few pages on a tired day still count as reading.
-The story waits for you. It has all the time in the world.
-Whatever you read today, you read. That's the whole thing.
-Books are patient company.
-Some days you read a chapter. Some days you read a sentence twice.
-You keep coming back, and that is the good part.
-Reading a little is infinitely more than reading none.
-The page you're on is exactly the right page.
-No one is grading this.
-A quiet hour with a book is an hour well spent.
-You don't have to finish it to have gotten something from it.
-Curiosity counts as a reason.
-Pick it up whenever. It'll still be there.
-The best readers are just people who kept reading.
-Today's pages are yours. Nobody else gets to count them.
+# Format: <quote>||<attributor>
+# Lines beginning with # are comments and are ignored.
+# A line with no || is treated as a quote with no attributor.
+#
+# Two review tiers below. TIER A is solidly documented. TIER B is widely
+# circulated but the sourcing is looser — read those before shipping.
+#
+# ============================================================
+# TIER A — well documented
+# ============================================================
+#
+# --- Fight / conviction ---
+Where you see wrong or inequality or injustice, speak out, because this is your country.||Thurgood Marshall
+Fight for the things that you care about, but do it in a way that will lead others to join you.||Ruth Bader Ginsburg
+Women belong in all places where decisions are being made.||Ruth Bader Ginsburg
+If there is no struggle, there is no progress.||Frederick Douglass
+Power concedes nothing without a demand. It never did and it never will.||Frederick Douglass
+Injustice anywhere is a threat to justice everywhere.||Martin Luther King Jr.
+The time is always right to do what is right.||Martin Luther King Jr.
+In recognizing the humanity of our fellow beings, we pay ourselves the highest tribute.||Thurgood Marshall
+None of us got where we are solely by pulling ourselves up by our bootstraps.||Thurgood Marshall
+The greatest dangers to liberty lurk in insidious encroachment by men of zeal, well-meaning but without understanding.||Louis D. Brandeis
+If we would guide by the light of reason, we must let our minds be bold.||Louis D. Brandeis
+Sunlight is said to be the best of disinfectants.||Louis D. Brandeis
+The spirit of liberty is the spirit which is not too sure that it is right.||Learned Hand
+Facts are stubborn things.||John Adams
+#
+# --- Grit / the long haul ---
+Real change, enduring change, happens one step at a time.||Ruth Bader Ginsburg
+So often in life, things that you regard as an impediment turn out to be great, good fortune.||Ruth Bader Ginsburg
+Don't be distracted by emotions like anger, envy, resentment. These just zap energy and waste time.||Ruth Bader Ginsburg
+Reacting in anger or annoyance will not advance one's ability to persuade.||Ruth Bader Ginsburg
+A surplus of effort could overcome a deficit of confidence.||Sonia Sotomayor
+Experience can confine, but it can also enlarge.||Sonia Sotomayor
+Success is to be measured not so much by the position that one has reached as by the obstacles overcome.||Booker T. Washington
+Justice is not to be taken by storm. She is to be wooed by slow advances.||Benjamin N. Cardozo
+Always bear in mind that your own resolution to succeed is more important than any other thing.||Abraham Lincoln
+The leading rule for the lawyer, as for the man of every other calling, is diligence.||Abraham Lincoln
+Far better it is to dare mighty things than to take rank with those poor spirits who neither enjoy much nor suffer much.||Theodore Roosevelt
+We don't accomplish anything in this world alone.||Sandra Day O'Connor
+The power I exert on the court depends on the power of my arguments, not on my gender.||Sandra Day O'Connor
+#
+# --- The craft ---
+The life of the law has not been logic; it has been experience.||Oliver Wendell Holmes Jr.
+Discourage litigation. Persuade your neighbors to compromise whenever you can.||Abraham Lincoln
+A lawyer without books would be like a workman without tools.||Thomas Jefferson
+It is not enough to be busy. The question is: what are we busy about?||Henry David Thoreau
+Read, read, read. Read everything.||William Faulkner
+#
+# --- Environmental law ---
+The economy is a wholly owned subsidiary of the environment.||Gaylord Nelson
+It's the little things citizens do. That's what will make the difference.||Wangari Maathai
+Wake up, humanity. We're out of time.||Berta Cáceres
+In nature nothing exists alone.||Rachel Carson
+Those who contemplate the beauty of the earth find reserves of strength that will endure as long as life lasts.||Rachel Carson
+High quality water is more than the dream of the conservationists, more than a political slogan.||Edmund S. Muskie
+My gosh, why don't we have a legal defense fund for the environment? That's something we can do.||J. Gustave Speth, on founding the NRDC
+Conservation is a great moral issue, for it involves the patriotic duty of insuring the safety and continuance of the nation.||Theodore Roosevelt
+The nation behaves well if it treats the natural resources as assets which it must turn over to the next generation increased, and not impaired, in value.||Theodore Roosevelt
+Earth provides enough to satisfy every man's need, but not every man's greed.||Mahatma Gandhi
+To halt the decline of an ecosystem, it is necessary to think like an ecosystem.||Douglas P. Wheeler
+#
+# ============================================================
+# TIER B — widely circulated, sourcing looser. Review before shipping.
+# ============================================================
+#
+Lost causes are the only ones worth fighting for.||Clarence Darrow
+I will study and get ready, and perhaps my chance will come.||Abraham Lincoln
+Be sure you put your feet in the right place, then stand firm.||Abraham Lincoln
+A mind that is stretched by a new experience can never go back to its old dimensions.||Oliver Wendell Holmes Jr.
+Do what you can, with what you have, where you are.||Theodore Roosevelt
+Once you learn to read, you will be forever free.||Frederick Douglass
+The arc of the moral universe is long, but it bends toward justice.||Theodore Parker, popularized by Martin Luther King Jr.
+I ask no favor for my sex. All I ask of our brethren is that they take their feet off our necks.||Sarah Grimké, quoted by Ruth Bader Ginsburg
+#
+# ============================================================
+# Add your own in my-quotes.txt — same format, survives updates.
+# ============================================================
