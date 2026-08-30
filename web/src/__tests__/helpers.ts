@@ -62,7 +62,7 @@ export function classWith(overrides: Partial<Class>): Class {
  * in tokens.css and nowhere else (DECISIONS.md 12.2), and what these tests
  * assert is the *choosing*, not the colors. */
 export function installPalette(): string[] {
-  const colors = CLASS_TOKENS.map((_, i) => `#00000${i}`);
+  const colors = CLASS_TOKENS.map((_, i) => `#${i.toString(16).padStart(6, "0")}`);
   CLASS_TOKENS.forEach((token, i) => {
     document.documentElement.style.setProperty(token, colors[i]);
   });

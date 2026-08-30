@@ -125,14 +125,23 @@
   --chrome-safe-text: #1a1a1a;
   --chrome-safe-border: #4d4d4d;
 
-  /* 12.2 Class swatches. Pink-forward, and eight of them. Fixed regardless
-   * of the active theme -- they are a label palette for grouping entries,
-   * not part of the page's look, and section 13 only extends theming to
-   * the six semantic tokens above.
+  /* 12.2 Class swatches. Fourteen of them, pink-forward at the front. Fixed
+   * regardless of the active theme -- they are a label palette for grouping
+   * entries, not part of the page's look, and section 13 only extends theming
+   * to the six semantic tokens above.
    *
    * --pink-hot is deliberately NOT among these: it belongs to the primary
-   * number alone (9.1). Each of these is legible as a small dot on
-   * --pink-surface at body size.
+   * number alone (9.1). --class-piggy is a soft pig pink and is well clear
+   * of it.
+   *
+   * "Legible as a small dot on --pink-surface at body size" was the stated
+   * bar for the first eight. It was a perceptual judgement, not a measured
+   * one -- coral and peach are already under 3:1 on every light surface.
+   * The six added below are true to the colors that were asked for by name,
+   * and five of them (all but --class-teal) are paler still on light themes,
+   * while being the most legible in the set on midnight. That is on purpose:
+   * they are here to be looked at and ruled on, not pre-solved. Measured
+   * ratios and the reasoning are in DECISIONS.md 12.2.1.
    *
    * The server has no palette. ClassManager reads these tokens by name at
    * runtime and sends the resolved value, so the values live here and
@@ -145,6 +154,17 @@
   --class-peach: #d9884a;
   --class-moss: #5e8c6a;
   --class-sky: #4f7ea8;
+
+  /* Added after the original eight. --class-sky and --class-lilac above are
+   * the near neighbours of --class-azure and --class-lavender; the older two
+   * are left untouched because a class stores the resolved hex on disk, so
+   * changing a value orphans live data instead of recoloring it. */
+  --class-sunflower: #f0b429;
+  --class-butter: #f7e7a3;
+  --class-azure: #7ec8f2;
+  --class-teal: #2b8a8f;
+  --class-lavender: #b9a3e3;
+  --class-piggy: #f4a7bb;
 
   /* 9.2 Motion */
   --dur-ui: 180ms;

@@ -1090,7 +1090,7 @@ refresh of that day.
 
 #### What a full pass guarantees, and what it cannot
 
-The promise is about **a pass through the list**, not about every 51-day window.
+The promise is about **a pass through the list**, not about every 74-day window.
 Those are different claims, and only the first is achievable: if every window of
 length N were a permutation, then `s[i] == s[i+N]` for every `i`, which means the
 list is dealt in one fixed order forever and never reshuffles. Reshuffling and
@@ -1098,8 +1098,8 @@ every-window-covering are mutually exclusive. We chose reshuffling.
 
 What follows from that is a **seam**: the last card of one deck and the first
 card of the next are drawn independently, so they can be the same quote — the one
-case where it shows two days running. Over a 51-quote list that is a 1-in-51
-event per seam, or about once every seven years. It is left unfixed deliberately.
+case where it shows two days running. Over a 74-quote list that is a 1-in-74
+event per seam, or about once every fifteen years. It is left unfixed deliberately.
 Every fix for it (rejection-sample the next deck against the previous one's tail;
 swap the first two cards on collision) makes deck `c` depend on deck `c-1`, and a
 rule that chains backwards through every deck since the epoch is a much worse
@@ -1139,9 +1139,9 @@ If this is ever revisited, the pin is the design, and it goes in `DATA_ROOT`.
 
 `cycle_bounds(day, count)` returns the first and last day of the pass a day falls
 in, so "when do we run out of quotes" is answerable without running the rotation
-by hand. For the 51 quotes shipped in `quotes.txt`, with an empty
-`my-quotes.txt`, the current pass runs **2026-08-29 → 2026-10-18**. On 2026-10-19
-the same 51 reshuffle and deal again, so nothing breaks and nothing goes blank;
+by hand. For the 74 quotes shipped in `quotes.txt`, with an empty
+`my-quotes.txt`, the current pass runs **2026-08-24 → 2026-11-05**. On 2026-11-06
+the same 74 reshuffle and deal again, so nothing breaks and nothing goes blank;
 that date is simply the natural one to ship a longer list on. Any quote in
 `my-quotes.txt` changes the count and therefore the date — recompute rather than
 trusting this paragraph after an edit.
@@ -1277,14 +1277,51 @@ identical for both files because they share one implementation (3.1, 3.4).
 
 ### 12.2 Color comes from the front end, and §9 is not amended
 
-The palette is eight pink-forward `--class-*` custom properties in
-`web/src/tokens.css`. **A hex literal still appears in that file and nowhere else in
-this repo** — §9 stands exactly as written, with no carve-out. `--pink-hot` is not among
-them; it stays reserved for the primary number (9.1).
+The palette is fourteen `--class-*` custom properties in `web/src/tokens.css`, the
+first eight of them pink-forward. **A hex literal still appears in that file and
+nowhere else in this repo** — §9 stands exactly as written, with no carve-out.
+`--pink-hot` is not among them; it stays reserved for the primary number (9.1), and
+`--class-piggy` is a soft pig pink well clear of it.
 
 `web/src/components/ClassManager.tsx` owns the palette. Creating a class pre-selects the
 first palette color not already used by a non-archived class, wrapping by count once all
-eight are taken, and sends it as an explicit `color`.
+fourteen are taken, and sends it as an explicit `color`.
+
+#### 12.2.1 Amendment: six more swatches, five of which are pale on light themes
+
+Six colors were asked for by name — sunflower yellow, pastel yellow, sky blue, teal
+blue, lavender, piggy pink — and they ship at the values those names actually mean.
+Measured against every preset surface, only `--class-teal` clears 3:1 on the light
+themes. The others land here (worst light-theme surface, and `midnight`):
+
+| swatch | hex | worst light | midnight |
+|---|---|---|---|
+| `--class-sunflower` | `#f0b429` | 1.51 | 8.43 |
+| `--class-butter` | `#f7e7a3` | 1.01 | 12.65 |
+| `--class-azure` | `#7ec8f2` | 1.49 | 8.55 |
+| `--class-teal` | `#2b8a8f` | 3.31 | 3.84 |
+| `--class-lavender` | `#b9a3e3` | 1.81 | 7.04 |
+| `--class-piggy` | `#f4a7bb` | 1.53 | 8.30 |
+
+**The same measurement puts the original eight in context, and it is not the clean
+story §12.2 told.** `--class-coral` (2.54) and `--class-peach` (2.25) are already below
+3:1 on every light surface, and `--class-berry` (2.74) and `--class-plum` (2.56) are
+below it on `midnight`. The "legible as a small dot at body size" sentence was a
+perceptual judgement, never a measured threshold, and it was already generous. It is
+kept as a statement of intent, not repaired into a rule the shipped set does not meet.
+
+This is recorded rather than fixed. Deepening the pale five until they passed would
+have meant shipping a mustard, a steel blue and a dusty rose under the names "pastel
+yellow", "sky blue" and "piggy pink", which answers a different request than the one
+that was made. They are here to be looked at and ruled on. **If they stay, this
+paragraph is the amendment that lets them; if they go, delete them and the sentence in
+§12.2 reverts to covering the whole palette.**
+
+`--class-sky` (`#4f7ea8`) and `--class-lilac` (`#9a6fc0`) are near neighbours of the new
+`--class-azure` and `--class-lavender` and were deliberately left untouched: a class
+stores the **resolved hex** on disk, so editing a token value orphans existing classes
+from the palette instead of recoloring them. Retuning a swatch is never a cosmetic
+change once classes exist.
 
 **The server has no palette and no color-picking logic.** It validates that `color` is a
 well-formed hex and stores what it was given. An omitted `color` falls back to a single

@@ -36,8 +36,9 @@ from app.quotes import (
 SAMPLE = ["first quote", "second quote", "third quote", "fourth quote"]
 SAMPLE_RECORDS = [Quote(text, None) for text in SAMPLE]
 
-# A list the size of the shipped one, so the walks below cover a real cycle
-# length rather than a toy one.
+# A realistic cycle length rather than a toy one. The walks below hardcode 51
+# alongside it, so this number and those are one unit -- it is not meant to
+# track the shipped count, which moves whenever quotes.txt is edited.
 DECK_SAMPLE = [f"quote number {n:02d}" for n in range(51)]
 
 # The one file this repo actually ships, checked as itself further down.

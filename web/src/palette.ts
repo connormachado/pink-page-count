@@ -14,6 +14,12 @@ export const CLASS_TOKENS = [
   "--class-peach",
   "--class-moss",
   "--class-sky",
+  "--class-sunflower",
+  "--class-butter",
+  "--class-azure",
+  "--class-teal",
+  "--class-lavender",
+  "--class-piggy",
 ] as const;
 
 /** The resolved palette, in token order. Empty if the stylesheet has not loaded. */
