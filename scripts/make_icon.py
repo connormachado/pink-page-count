@@ -1,7 +1,6 @@
 """Generates AppIcon.icns for the Desktop launcher. Stdlib only (struct + zlib
 + math) -- no new dependency, so the icon can be regenerated any time the
---pink-hot / --pink-surface / --ink tokens in web/src/tokens.css ever change
-(DECISIONS.md 9.1, 15.7).
+--ink token in web/src/tokens.css ever changes (DECISIONS.md 9.1, 15.7).
 
 Run from the repo root:
 
@@ -9,9 +8,10 @@ Run from the repo root:
 
 Requires `iconutil` (built into macOS) to assemble the final .icns.
 
-The icon is a pink-hot rounded square with a pink-surface inset (the Phase 2
-look, unchanged in shape, colour and proportion) carrying a scales-of-justice
-mark in --ink. The mark is the drawing in `scales-mark.svg` at the repo root,
+The icon is one flat ICON_BG rounded square -- no inset, one colour edge to
+edge (15.7.4) -- carrying a scales-of-justice mark in --ink. The rounded
+square's size and corner radius are the Phase 2 ones, unchanged; only the fill
+changed. The mark is the drawing in `scales-mark.svg` at the repo root,
 rasterized here rather than parsed -- there is no SVG library in this project
 and there is not going to be one. Its whole geometry is parameterized in MARK
 below, in the SVG's own 100x100 units, so every number can be read straight off
@@ -35,9 +35,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# DECISIONS.md 9.1 -- the frozen tokens, and the only three hex literals here.
-PINK_HOT = (0xFF, 0x2E, 0x88)
-PINK_SURFACE = (0xFF, 0xE8, 0xF0)
+# The two hex literals here. INK is the frozen --ink token (DECISIONS.md 9.1);
+# ICON_BG is the icon's own flat background and has no counterpart in
+# tokens.css, because nothing in the app renders it (15.7.4).
+ICON_BG = (0xED, 0xB8, 0xCE)  # the one colour the whole plate is, edge to edge
 INK = (0x2B, 0x1A, 0x22)  # --ink: all primary text; here, the scales mark (15.7)
 
 # The sizes iconutil expects in an .iconset, by output filename.
@@ -67,8 +68,9 @@ ICONSET_SIZES = {
 #
 # Their product is the only thing that decides how big the mark is. `fit` is set
 # so the mark's half-width lands at 0.246 of the edge -- the same half-width the
-# previous mark had, so the clearance to the pink-surface inset (+/-0.32) and to
-# the icon's rounded corner is unchanged.
+# previous mark had, so the clearance to the icon's rounded corner is unchanged.
+# It used to also be sized against a +/-0.32 pink-surface inset; that inset is
+# gone (15.7.4) and the number was kept anyway, so the mark is untouched.
 MARK = {
     # placement -----------------------------------------------------------------
     "svg_inset": 0.78,
@@ -486,15 +488,13 @@ def _mark_coverage(px: int, py: int, cx: float, cy: float, size: int, ss: int) -
 
 
 def _render(size: int) -> bytes:
-    """RGBA pixel bytes for one icon size: a pink-hot rounded square with a
-    pink-surface inset (both frozen tokens) on a transparent background, with
-    the --ink scales mark composited over the inset."""
+    """RGBA pixel bytes for one icon size: a single flat ICON_BG rounded square
+    on a transparent background, with the --ink scales mark composited over
+    it. One colour behind the mark, edge to edge -- see 15.7.4."""
     cx = cy = size / 2.0
 
     outer_half = size * 0.44
     outer_radius = outer_half * 0.42
-    inner_half = size * 0.32
-    inner_radius = inner_half * 0.42
 
     # Supersample the mark only where its thin members would otherwise vanish.
     if size <= 128:
@@ -519,11 +519,7 @@ def _render(size: int) -> bytes:
             if alpha <= 0.0:
                 continue
 
-            inner_d = _rounded_box_sdf(x, y, inner_half, inner_half, inner_radius)
-            inner_t = _coverage(inner_d)
-            r = PINK_HOT[0] + (PINK_SURFACE[0] - PINK_HOT[0]) * inner_t
-            g = PINK_HOT[1] + (PINK_SURFACE[1] - PINK_HOT[1]) * inner_t
-            b = PINK_HOT[2] + (PINK_SURFACE[2] - PINK_HOT[2]) * inner_t
+            r, g, b = float(ICON_BG[0]), float(ICON_BG[1]), float(ICON_BG[2])
 
             if mark_row and mx0 <= x <= mx1:
                 mark_t = _mark_coverage(px, py, cx, cy, size, ss)
