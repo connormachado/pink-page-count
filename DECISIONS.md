@@ -609,7 +609,7 @@ AppIcon.icns            the Desktop launcher's icon, applied by hand via
                         Finder -> Get Info (Phase 4)
 scripts/
   make_icon.py          regenerates AppIcon.icns: a flat ICON_BG plate (15.7.4)
-                        carrying the scales mark in --ink (15.7). stdlib only
+                        carrying the scales mark in black (15.7.5). stdlib only
                         (struct + zlib); no new dependency
 app/
   config.py             paths, port, env var names
@@ -1651,9 +1651,9 @@ Both are deliberately out of this session's scope and neither is started.
 
 ### 15.7 The app icon carries a scales-of-justice mark
 
-**The background this section describes is superseded by 15.7.4: the plate is now
-one flat colour, no inset. The mark, and everything 15.7.1--15.7.3 say about it,
-is unchanged.**
+**Superseded in two places. The background: 15.7.4 -- the plate is now one flat
+colour, no inset. The mark's colour: 15.7.5 -- it is pure black, not `--ink`.
+The mark's *drawing* is unchanged, so 15.7.1--15.7.3 still hold.**
 
 `AppIcon.icns` is still the Phase 2 icon -- the `--pink-hot` (`#FF2E88`) rounded
 square with the `--pink-surface` (`#FFE8F0`) inset, both frozen tokens (9.1),
@@ -1816,11 +1816,64 @@ tempted to darken the plate further: `--ink` on the *old* `--pink-hot` was only
 4.71:1, so the previous design's inset was doing real work. There is a lot of
 room below `#EDB8CE`, but not an unlimited amount.
 
+*(That drop is what 15.7.5 answers: the mark is no longer `--ink`.)*
+
 **A side effect worth recording: `--pink-hot` is now absent from the icon.** 15.7
 noted that the *mark* avoided `--pink-hot` because 9.1 reserves it for the
 primary numeral -- while the background it sat on was `--pink-hot` itself. That
 tension is gone, not because it was fixed, but because the background changed for
 an unrelated reason.
+
+#### 15.7.5 Amendment: the mark is pure black, and it is not `--ink` either
+
+**This replaces `--ink` as the mark's colour.** In `make_icon.py`:
+
+```
+MARK_INK = (0x00, 0x00, 0x00)   # #000000
+```
+
+Connor read the flat-pink icon from 15.7.4 and said the mark looked light, and
+asked for more separation between the pink and the black. `--ink` (`#2B1A22`) is
+a warm dark plum, not a black; on `#FFE8F0` it read as one, and on the mid-tone
+`#EDB8CE` plate it does not. 9.7:1 is a fine number that describes the wrong
+thing -- it is a legibility threshold, and this was a complaint about *weight*.
+
+Four darknesses were rendered on the actual plate at 220px and compared side by
+side before choosing: `#2B1A22` (9.7:1), `#1C1016` (10.88:1), `#12090D`
+(11.53:1), `#000000` (12.35:1). The intermediates are barely distinguishable
+from `--ink` at icon sizes -- they buy a contrast number and not a visible
+change. Black is the only one that actually answers the request, and it is what
+was asked for in as many words.
+
+**What this costs, stated plainly.** `make_icon.py` no longer mirrors *any*
+value from `tokens.css`. 15.7.4 broke the mirror for the plate and argued the
+exception was narrow because `--ink` still tracked its token; that argument is
+now spent. The icon has its own two colours, full stop, and the script's
+docstring says so. The practical consequence is small and worth being explicit
+about: **a future change to `--ink` no longer obliges anyone to re-run this
+script.** Nothing else in the repo was tracking it either way -- there is no
+favicon and no in-app chrome that draws the icon (15.7.4).
+
+`#000000` is at least not foreign to this project: it is the `contrast` preset's
+`--theme-ink` (13.2). That is a coincidence, not a derivation -- the icon does
+not follow the active theme and never has -- but it means the repo was already
+willing to put pure black on screen.
+
+**What did not change.** `scales-mark.svg`, every number in `MARK`, the plate
+colour and geometry, and the supersampling schedule. **15.7.2's table is still
+correct**: those are *coverage* figures, and coverage is a function of geometry,
+which did not move. What changed is the endpoint each coverage blends toward, so
+every partial pixel lands darker than the table's prose implies. The worst case
+is the one worth recording, because it improves the most:
+
+| size | darkest pixel, `--ink` | darkest pixel, black | coverage |
+|---|---|---|---|
+| 16 | `#4F3741` | `#2C2226` | 0.814, unchanged |
+
+At 16px the mark's densest pixels used to be a mid-brown against pink. They are
+now genuinely dark. 15.7.3 still stands unamended -- the chains are still
+sub-pixel below 64px, that is still accepted, and this did not fix it and was
+not trying to.
 
 ---
 
