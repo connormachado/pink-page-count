@@ -876,8 +876,9 @@ read, or write `data/entries.json`.** Editing quotes must be *structurally* inca
 touching the reading log — not careful about it, incapable of it.
 
 The enforcement is `app/quotes.py`'s import list. It imports `hashlib`, `pathlib`, and
-one function from `daytime`. It does not import `storage`, does not import `config`, and
-never names the data file, so there is no path through it that reaches an entry.
+`dataclasses` — stdlib only, and as of 10.3.1 nothing from this project at all. It does
+not import `storage`, does not import `config`, and never names the data file, so there
+is no path through it that reaches an entry.
 `tests/test_quotes.py` parses the module and asserts that import list, and separately
 asserts `entries.json` is byte-identical after hammering the endpoint.
 
@@ -976,7 +977,10 @@ front end and its server together as one bundle (§15), so there is no version
 of one that has to talk to an older version of the other.
 
 Rotation is untouched: `sha256(day_key) % len(quotes)` over the unioned list,
-exactly as 10.3 describes, operating on records instead of strings.
+exactly as 10.3 describes, operating on records instead of strings. **Superseded
+by 10.3.1** — the deck walk that replaced that formula runs over the same unioned
+list of records, and this section's union, dedup and ordering rules are what
+define the list it walks.
 
 **Rendering (§9, unamended).** The attributor sits beneath the quote,
 right-aligned to the quote block, one step smaller (14px against the quote's
@@ -1009,6 +1013,9 @@ and is still a whole, valid quote.
 
 ### 10.3 Selection is deterministic from the day key
 
+**Superseded by 10.3.1.** The rule below was implemented exactly as written; the
+rule itself was the mistake. Read 10.3.1 for what the code now does.
+
 `index = sha256(day_key) % len(quotes)`. The same logical day always yields the same
 quote, so reloading the page never shuffles it.
 
@@ -1019,6 +1026,133 @@ machines, and years.
 
 The day key comes from `daytime.day_key` — the same 4am boundary as everything else,
 per §2.3. There is no second implementation of it here either.
+
+### 10.3.1 Amendment: a dealt deck, because an independent draw is not a rotation
+
+**The correction first, because 10.3 as written was not a doc that disagreed with
+its code — the code matched it exactly.** `sha256(day_key) % len` takes an
+independent draw every day. Independent draws collide. Measured over the shipped
+51-quote list: the chance some quote repeats within any given fortnight is
+**86%**, and walking twenty years of real day keys, the longest a quote goes
+unshown is **546 days** — a year and a half of never appearing while others turn
+up three times a season. 10.3 documented that as if determinism were the whole
+requirement. It is not. The requirement is **no repeat until the list is
+exhausted**, and that is what this section replaces it with.
+
+Under the deck, the same twenty-year walk has a longest gap of **101 days**,
+which is `2N-1` exactly — the worst case the structure permits, and a bound
+rather than a hope.
+
+**The rule.** Shuffle the whole list into a deck, deal one card a day, and
+shuffle a fresh deck when the deck runs out. Every quote is shown once before
+any quote is shown twice.
+
+```
+day_number      = day.toordinal()                  # the logical day, as a count
+cycle, position = divmod(day_number, len(quotes))  # which pass, how far into it
+index           = deck(cycle, len(quotes))[position]
+```
+
+`deck` is a Fisher–Yates shuffle of `range(count)` whose every draw is
+`sha256(namespace | count | cycle | step)`, truncated to 64 bits. It is a
+permutation by construction, which is the whole guarantee: a pass through it
+deals every index exactly once.
+
+**Stateless. There is no rotation file.** Position is arithmetic on the day
+count, not a saved cursor, so the app does not have to have been running — or
+even installed — on the days in between. Launch it once in March and once in
+June and June's quote is the one June was always going to get. A persisted
+cursor would have had to answer "she didn't open it for a week, does the
+rotation advance by seven or by one," and every answer to that question is
+wrong. Nothing is written to `DATA_ROOT` for this, and §10.1's structural
+isolation is not merely intact but stronger: the module now imports nothing from
+this project at all.
+
+**Hand-rolled, not `random.shuffle`.** For the reason 10.3 already gives for
+preferring sha256 to the builtin `hash()`, one step further. `random`'s internals
+carry no cross-version promise, and a Python upgrade that reseeded her deck would
+be invisible until she noticed a quote twice in a week. sha256 is stable across
+processes, machines, Python versions and years. It also costs no import
+`app/quotes.py` did not already have, which is why 10.1's enforcement list did
+not have to grow to accommodate this.
+
+**`DECK_NAMESPACE` is versioned (`.../v1`) and is a named constant.** Changing
+that string reshuffles every deck in every year. It is spelled out in one place
+and pinned by a literal in `tests/test_quotes.py` so that moving every quote onto
+a different day is something a future change has to do on purpose, in a visible
+diff.
+
+**The day boundary is unchanged.** `daytime.day_key` resolves the 4am boundary
+(§2.3) before a date ever reaches this module; `day_number` only takes the
+ordinal of an answer someone else already gave. There is still no second
+implementation of the boundary here. One quote per day, stable across every
+refresh of that day.
+
+#### What a full pass guarantees, and what it cannot
+
+The promise is about **a pass through the list**, not about every 51-day window.
+Those are different claims, and only the first is achievable: if every window of
+length N were a permutation, then `s[i] == s[i+N]` for every `i`, which means the
+list is dealt in one fixed order forever and never reshuffles. Reshuffling and
+every-window-covering are mutually exclusive. We chose reshuffling.
+
+What follows from that is a **seam**: the last card of one deck and the first
+card of the next are drawn independently, so they can be the same quote — the one
+case where it shows two days running. Over a 51-quote list that is a 1-in-51
+event per seam, or about once every seven years. It is left unfixed deliberately.
+Every fix for it (rejection-sample the next deck against the previous one's tail;
+swap the first two cards on collision) makes deck `c` depend on deck `c-1`, and a
+rule that chains backwards through every deck since the epoch is a much worse
+thing to own than a repeat a reader will see twice in their life.
+
+#### The list changing mid-pass — what was chosen, and why
+
+`len(quotes)` is read on every request (10.4), so editing `my-quotes.txt` changes
+`count` between one page load and the next. `count` is an input to both the
+`divmod` and the deck, so:
+
+- **It cannot crash, and this is guaranteed structurally, not by care.** The
+  index is computed from the count that was *just measured*, in the same call
+  that measured it, so it can never point past the end of the list it indexes.
+  Emptying the file is the 10.4 fallback, not an error. A one-line file is that
+  line every day. `tests/test_quotes.py` grows a list by one quote a day for
+  sixty days and shrinks one to nothing under a live server.
+- **A quote added mid-pass is never stranded.** The next full pass over the new
+  length deals it along with everything else, exactly once.
+- **What it does cost: an edit re-deals the rest of the current pass, and can
+  change the pick for the day the edit is made.** This is not a shortcoming of
+  the implementation; it is forced. A scheme that deals every quote once per pass
+  must depend on how many quotes there are, so changing that number necessarily
+  changes the deal. No stateless scheme escapes it.
+
+**A pin file was considered and rejected.** Writing `DATA_ROOT/quote-pin.json`
+(never `entries.json`) holding today's resolved quote would freeze the pick
+against a same-day edit exactly. It was turned down: it puts a disk write in the
+`GET /api/quote` path, adds a failure surface to the one module whose entire
+design is being structurally incapable of touching anything, and buys a property
+worth very little — the cost of an edit re-dealing the day is that she sees a
+different quote on the afternoon she added one, which is a reasonable thing to
+happen when you have just added a quote. Statelessness is worth more than that.
+If this is ever revisited, the pin is the design, and it goes in `DATA_ROOT`.
+
+#### When the current deck runs out
+
+`cycle_bounds(day, count)` returns the first and last day of the pass a day falls
+in, so "when do we run out of quotes" is answerable without running the rotation
+by hand. For the 51 quotes shipped in `quotes.txt`, with an empty
+`my-quotes.txt`, the current pass runs **2026-08-29 → 2026-10-18**. On 2026-10-19
+the same 51 reshuffle and deal again, so nothing breaks and nothing goes blank;
+that date is simply the natural one to ship a longer list on. Any quote in
+`my-quotes.txt` changes the count and therefore the date — recompute rather than
+trusting this paragraph after an edit.
+
+**Tests.** Backend **313**, up from 298. `tests/test_quotes.py` walks 51
+consecutive days from a pass boundary and asserts every quote appears exactly
+once, walks 102 and asserts two complete passes, asserts the deck is a
+permutation for every count from 1 to 59 across five cycles, asserts stability
+within a day across repeated calls and repeated requests, asserts no quote waits
+longer than `2N-1` days, and asserts a list changing size underneath a live
+server never raises and never blanks the message area.
 
 ### 10.4 Read on request, and never an error
 
