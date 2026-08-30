@@ -30,10 +30,10 @@ body {
  * pixel. That is the guarantee §17 asks for, and it holds structurally
  * rather than because three widths happen to add up.
  *
- * These rules only ever apply above RAIL_MIN_WIDTH_PX: below it App does not
- * render a Rail at all, and both panels sit under the entry log as before.
- * The breakpoint lives in useRailLayout.ts and only there -- there is no
- * media query here to drift out of sync with it.
+ * These rules apply at every width. There is no breakpoint and no media
+ * query: a rail is never unmounted, and an open panel overlays the column
+ * instead of displacing it. What gives way instead is the numeral, which is
+ * fitted to the space between two open rails -- see useNumeralFit.ts (17.2).
  *
  * Every color below is a semantic token that already existed. The rails
  * introduce no new surface, which is why no preset needed rechecking (9.1).

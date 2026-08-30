@@ -655,16 +655,17 @@ web/                    the front end (Phase 2). Vite + React + TypeScript,
   src/milestones.ts     crossedMilestone(). Arrivals only, never distances (11)
   src/useCountUp.ts     rAF count-up toward a server value (11)
   src/motion.ts         prefers-reduced-motion + duration tokens
-  src/useRailLayout.ts  RAIL_MIN_WIDTH_PX and the matchMedia hook that decides
-                        rails vs. stacked. The breakpoint lives here only (17.2)
+  src/useNumeralFit.ts  the numeral's fitted size: one pure function, one
+                        hook over resize. Every constant the fit needs, and
+                        the font metrics behind 0.668, live here only (17.2)
   src/components/
     ClassPicker.tsx     inline, optional, never blocks a save (12.4)
-    ClassManager.tsx    Owns the palette (12.2). Stacked <details> or bare
-                        inside the right rail, per its `chrome` prop (17.4)
-    SettingsPanel.tsx   Owns default_chip; mounts ThemeEditor (13). Same two
-                        chromes; the left rail on a wide window (17.4)
+    ClassManager.tsx    Owns the palette (12.2). A bare body; the right rail
+                        is its only frame (17.4)
+    SettingsPanel.tsx   Owns default_chip; mounts ThemeEditor (13). A bare
+                        body; the left rail is its only frame (17.4)
     Rail.tsx            one collapsible edge rail: fixed position, one toggle,
-                        vertical label. Exports PanelChrome (17)
+                        vertical label. Mounted at every width (17)
     ThemeEditor.tsx     preset picker, custom color inputs, contrast
                         warnings, the reset-to-preset escape hatch (13.3)
 quotes.txt              the canonical quotes, one per line. Source, not entry
@@ -1198,11 +1199,11 @@ Friction on the save path is the enemy. So:
 Management — create, rename, recolor, archive, delete — lives off the save path,
 closed by default. There is still no router (§6).
 
-**Amended by 17.** "Below the entry list" is now true only on a narrow window. At
-or above 1456px the same panel is the collapsed **right rail**, and the collapsed
-`<details>` is not mounted at all. What is unconditional — off the save path,
-closed by default, one word of label, no count beside a class name — is unchanged;
-only where it sits is.
+**Amended by 17, and again by 17.2.** "Below the entry list" is no longer true at
+any width: this panel is the collapsed **right rail**, at every width, and the
+stacked `<details>` no longer exists in the code at all. What is unconditional —
+off the save path, closed by default, one word of label, no count beside a class
+name — is unchanged; only where it sits is.
 
 ### 12.5 What classes deliberately are not
 
@@ -1350,10 +1351,9 @@ selected on load" and nothing more.
 Same pattern as the class manager (12.4), beside it, closed by default, off any
 save path. No router -- §6 still says no router.
 
-**Amended by 17.** The `<details>` is now the narrow-window chrome only. At or
-above 1456px this panel is the collapsed **left rail**, opposite Classes on the
-right, and only one of the two chromes is ever mounted (17.4). Closed by default
-and off the save path either way.
+**Amended by 17, and again by 17.2.** The `<details>` chrome is gone. This panel
+is the collapsed **left rail**, opposite Classes on the right, at every width and
+with no fallback (17.4). Closed by default and off the save path, as before.
 
 ---
 
@@ -2381,7 +2381,7 @@ list: to change a theme or rename a class she scrolled past every entry she had
 ever logged, and the further she got with the app the further away its own
 controls moved. The fix is to stop making the log the path to them.
 
-On a wide window the page is three regions:
+At every width the page is three regions:
 
 ```
   LEFT RAIL          CENTER (unchanged)           RIGHT RAIL
@@ -2394,7 +2394,9 @@ On a wide window the page is three regions:
 ```
 
 The center's content and its order are **exactly** what they were. This section
-moves two panels out of the column; it changes nothing inside it.
+moves two panels out of the column; the one thing it changes inside it is the
+numeral's *size*, which is what pays for the rails existing at every width
+(17.2, amended).
 
 ### 17.1 The center column cannot move, structurally
 
@@ -2422,14 +2424,30 @@ number. A 1-digit number sits at offset **0.00px** from both the column's centre
 and the viewport's, in every state and at every width, still 144px Fraunces in
 `--pink-hot`.
 
-### 17.2 The breakpoint is 1456px, and the numeral is what sets it
+**Amended, and re-measured.** The 1024 and 768 rows above were taken when no
+rail was mounted at those widths at all, so they proved less than they look.
+Rails now exist at every width (17.2, amended), and the guarantee was
+re-measured against that: 256 widths from 900 to 1920 in 4px steps, all four
+rail states at each, **1024 measurements of `main`'s rect and not one in which
+`x` or `width` differs from the same width's other three states** — equal to
+0.001px, which is the tolerance of the check and not of the result. An open
+panel is drawn *over* the column, never beside it.
 
-Below `RAIL_MIN_WIDTH_PX` (`web/src/useRailLayout.ts`, **1456**) there are no
-rails: both panels stack under the entry log exactly as before, and `App`
-renders no `Rail` at all. The constant lives in that one file and the CSS has no
-media query of its own, so there is no second copy to drift.
+### 17.2 There is no breakpoint: the numeral is what gives way
 
-1456 is not a taste value and it is not derived from the column. The column's
+**Amended. The 1456px breakpoint is gone, and with it the stacked fallback.**
+`web/src/useRailLayout.ts` is deleted and `RAIL_MIN_WIDTH_PX` with it; `App`
+renders both rails unconditionally, and the two stacked `<details>` are not
+rendered at any width. Nothing in the front end asks a media query how wide the
+window is. The layout is three regions, always.
+
+What follows is why the breakpoint existed, and then what replaced it. The
+overlap it was there to prevent is real and is **not** reintroduced — it is
+solved from the other side.
+
+#### What the breakpoint was for
+
+1456 was not a taste value and it is not derived from the column. The column's
 box is 672px and an open rail is 320px, which would already fit at 1312. **The
 binding constraint is the all-time number.** At its 144px display size a 9-digit
 total sets **704.09px of ink** inside a content box only 632px wide, and an
@@ -2476,6 +2494,125 @@ not touched here: A/B'd against `main`'s `dist`, `scrollWidth` is identical at
 every width. Making the number reflow to avoid a rail was rejected — the center
 is not what this section is allowed to change.
 
+#### What replaced it
+
+That last rejection is what this amendment reverses. A breakpoint buys the
+number's size with a second layout, and a second layout is two of everything:
+two frames per panel, a class of bug that only exists on one side of a
+threshold, and a window that reorganises itself while it is being dragged. The
+number's size is the cheaper thing to spend. **The rails are unconditional, and
+the numeral is fitted to the space between them.**
+
+`web/src/useNumeralFit.ts`, one pure function and one hook over `resize`:
+
+```
+available(W) = min(632, W - 2 x (320 + 16))
+size(W, d)   = clamp(36, available(W) / (d x 0.668), 144)
+```
+
+`320` is an open rail (`--rail-expanded`), `16` is a full `1rem` of daylight,
+`632` is the column's content box (`max-w-2xl` less `px-5` twice), `d` is how
+many digits the number has, and `144` is the size the numeral has always had and
+still has wherever it fits.
+
+Two of those deserve their own line.
+
+**The fit is measured against two *open* rails at every width, never against the
+collapsed ones.** So the numeral's size is a function of the viewport and of
+nothing else: opening a rail no more resizes the number than it moves the column
+(17.1). The cost is a number smaller than it strictly needs to be while both
+rails are shut — 113.77px rather than 144px for a 3-digit total at 900px. The
+alternative was a number that jumps when a panel opens, which is the thing 17.1
+exists to prevent, one element further in.
+
+**The numeral is never drawn wider than its column.** That is the `632`, and it
+is not tidiness: a centred run *wider* than its box is not centred in it at all
+— the measurement above is exactly that failure — and every clearance here is
+computed from the assumption that it is centred. Holding the ink inside the
+column keeps it symmetric about the viewport's centre, so one number covers both
+rails at once. Measured across the whole sweep, the ink's centre is **within
+0.0078px of the viewport's**, at every width, in every rail state. The
+pre-existing overflow of the column is gone as a consequence; nothing else about
+the column changed to get there.
+
+#### 0.668, and why it is one number rather than ten
+
+Both of the facts under it were measured in Chrome against the numeral's own
+computed style, and both are the opposite of what the code asks for:
+
+- **The digits are not tabular.** The component sets
+  `font-variant-numeric: tabular-nums` and has since Phase 2; the vendored
+  Fraunces ships no `tnum`, so the request is inert. At 144px the advances run
+  from **0.372em ("1") to 0.6131em ("0")**, a 65% spread. The 704.09px above was
+  one particular nine-digit number; the widest one is 788.9px, so even 1456
+  cleared less than it was measured to.
+- **The advance is not proportional to the font size.** Fraunces is variable and
+  carries an optical-size axis, and `font-optical-sizing` defaults to `auto`, so
+  a smaller numeral is set in a wider, sturdier cut of the same face. "0" is
+  **0.6131em at 144px and 0.66787em at 36px** — 9% wider exactly where there is
+  least room to spare. An earlier pass of this amendment used the 144px figure at
+  every size, and the sweep caught it: clearance at 900px came out at 10.39px
+  instead of the 16px it was designed for. The ratio is monotone in size over
+  36-144px, so **0.668** is its maximum, rounded up, and an upper bound at every
+  size in between.
+
+The fit therefore takes a digit *count*, never the digits themselves, and
+assumes every one of them is a "0". That is not indifference to the spread, it
+is what the count-up requires: the numeral animates toward the server's value
+(11.2) through strings nobody chose. A fit computed per frame would resize the
+number mid-count, and a fit computed from the target alone would be overrun by a
+wider frame — 999 -> 1111 passes through "1000", 100px wider than where it
+lands. Digits x the widest digit is the only bound that holds for every frame of
+it.
+
+The floor of **36px** is where the trade stops. Below it the numeral would stop
+being the dominant element on the page, which §17 may not give away, so past that
+point the rails are allowed to reach it instead. 36 is chosen so that the floor
+and the overlap begin at the same width: a nine-digit total is fitted rather than
+floored down to **856px**, and every shorter number far below that. Nothing
+inside the swept range is ever floored.
+
+36px is also the size at which §9.1's contrast argument stops holding.
+`--pink-hot` on `--pink-wash` is checked against the **large-text 3:1**
+threshold rather than 4.5:1, "matching the numeral's actual display size" —
+and WCAG's large text starts at 24px, or 18.66px bold. A fit that could shrink
+the number past that would quietly move it into a threshold no preset passes.
+It cannot: the floor is 36px, half again over the boundary, and the smallest
+numeral this fit produces is still large text in every preset.
+
+One more number, for the one that is absent: the width comes from
+`document.documentElement.clientWidth`, not `innerWidth` and not a CSS `100vw`.
+Where a browser draws a classic scrollbar rather than an overlay one it sits
+*inside* `innerWidth` but *outside* both the centred column and the fixed rails,
+so `100vw` would overstate the space by the scrollbar's width and spend the
+clearance on it.
+
+#### Measured
+
+Swept in Chrome against the built `dist` the server actually serves: **900 to
+1920 in 4px steps — 256 widths, all four rail states at each, 1024 measurements
+per data set** — with the ink taken from the text run's own rect rather than the
+element's, and run over three totals: `412`, `999999998`, and `100000000` (nine
+digits of the widest glyph in the font).
+
+| | 900 | 1200 | 1456 |
+|---|---|---|---|
+| 3-digit total (`412`) | **113.77px** | **144px** | **144px** |
+| 9-digit total (`100000000`) | **37.92px** | **87.82px** | **105.12px** |
+
+**Zero overlaps of the numeral's ink in 3072 measurements.** The tightest
+clearance anywhere is **20.17px**, at 900px with nine digits and a rail open —
+above the 16px the fit is designed to leave, because even "100000000" is not nine
+"0"s. No horizontal scrollbar at any width (`scrollWidth == clientWidth` on every
+row), nothing clipped, and the numeral is the largest element on the page
+everywhere: 37.92px against 16px for the next largest text, at its smallest.
+
+A **save at 900px with both rails open** was sampled frame by frame through the
+count-up: 60 samples, **two font sizes across all of them** — the 3-digit fit
+before the new value arrived, the 4-digit fit for the whole animation — and a
+tightest clearance of 38.31px. The size changes when the number does, not while
+it moves.
+
 ### 17.3 Open/closed is UI state and is never persisted
 
 A rail's open state lives in `App`'s `useState` and nowhere else. **It is not
@@ -2489,17 +2626,18 @@ heartbeat.
 
 Both rails may be open at once; neither knows about the other.
 
-### 17.4 One panel body, two chromes
+### 17.4 One panel body, one frame
 
-`SettingsPanel` and `ClassManager` take a `chrome?: "details" | "bare"` prop.
-`"details"` is the original stacked card of 12.4 and 13.6; `"bare"` is the same
-body with no wrapper, because the rail already supplies the card, the label and
-the disclosure. **The controls inside are identical in both** — the prop picks
-the frame, never the contents.
+**Amended by 17.2.** This section used to describe two chromes: a `chrome?:
+"details" | "bare"` prop on `SettingsPanel` and `ClassManager`, picking between
+the stacked card of 12.4 and 13.6 and the bare body a rail wraps. With the
+breakpoint gone the stacked card has no width left to appear at, so **the prop
+and the `<details>` chrome are both deleted**. Each panel renders its body and
+nothing else; the rail supplies the card, the label and the disclosure.
 
-Exactly one instance of each panel is mounted at a time. `App` renders the
-stacked pair *or* the rails, never both, so there is never a second copy of a
-form holding its own state. Verified across the whole 320–1920 sweep.
+What the two-chrome rule was protecting is now structural rather than asserted:
+there is one frame, so there cannot be two copies of a form holding their own
+state. `document.querySelectorAll("details")` returns **0** at every width.
 
 ### 17.5 No new copy, and no new color
 
@@ -2552,29 +2690,51 @@ on the tab afterwards.
 
 ### 17.7 What is verified
 
-**Front end: 108 tests**, up from 102. `rails.test.tsx` covers the rails
-mounting shut on a wide window, toggling from their own button, both open at
-once, keyboard operation, the stacked fallback on a narrow one, and the
-zero-writes assertion of 17.3. `setRailLayout()` in `helpers.ts` answers the
-breakpoint query; the default `matchMedia` stub answers false to everything, so
-**every test written before the rails still exercises the stacked layout
-unchanged**. Backend: **253**, untouched — this section adds no route, no field,
-and no server code.
+**Amended by 17.2, and re-verified against it.**
+
+**Front end: 139 tests**, up from 129. `rails.test.tsx` covers the rails mounting
+shut, toggling from their own button, both open at once, keyboard operation, and
+the zero-writes assertion of 17.3 — and now also that **no media query is ever
+asked about width** (the stub records every query it is handed), that
+`querySelectorAll("details")` is empty at any width, that a narrowing window
+shrinks the numeral rather than unmounting anything, and that opening a rail does
+not change the numeral's size. `numeral.test.ts` is new: it walks every width
+from 900 to 1920 against every digit count from 1 to 9 and asserts the ink clears
+both open rails by a full 1rem, never exceeds the column, never drops to the
+floor inside that range, and never varies with *which* digits a number has.
+`setRailLayout()` in `helpers.ts` is deleted; `setViewportWidth()` replaces it.
+Backend: **298**, untouched — this section adds no route, no field, and no server
+code.
 
 In Chrome, against the built `dist` the server actually serves:
 
-- **Center column identical** in all four rail states at 1440/1024/768 (17.1).
-- **No overlap at any width** from 320 to 1920, ink measured from the text run
-  (17.2). Rail count transitions exactly once.
-- **1-digit number** still 144px and centred to 0.00px, rails open or shut.
+- **Center column identical** in all four rail states, at all 256 widths from
+  900 to 1920, to 0.001px (17.1).
+- **No overlap of the numeral's ink** in 3072 measurements across three totals,
+  ink measured from the text run and not the element (17.2). Tightest clearance
+  20.17px. No rail is ever unmounted, so there is no transition to count.
+- **The numeral is the largest element on the page at every width** — 37.92px
+  against 16px for the next largest text, at its smallest — and centred on the
+  viewport to within 0.0078px in every state.
+- **Nothing clipped, no horizontal scrollbar** at any width in the sweep
+  (`scrollWidth == clientWidth` on every row).
+- **A live count-up at 900px with both rails open** holds two font sizes across
+  60 sampled frames and never comes within 38px of a rail.
 - **Console clean** — zero errors and zero exceptions — and **every asset and API
   call 200** (`/`, the hashed css and js, `/api/stats|entries|classes|settings|
   quote`, the heartbeat's 204, and the vendored Fraunces woff2). No external
-  request of any kind: §9.4 holds. The opportunistic `favicon.ico` 404 is
-  pre-existing and appears identically on `main`.
-- **All six presets** render both rails, contrast re-checked on the painted
-  colors (17.5).
+  request of any kind: §9.4 holds.
+- **All six presets** render both rails at **900px** with both open, contrast
+  re-read from the painted colors: 7.71 / 5.43 / 5.43 / 4.99 / 11.29 / 7.60,
+  identical to 17.5's table, which is what "the rails introduce no new surface"
+  predicts.
 
-**Not fixed here, and unchanged:** B3, B4, B5, S1–S7. This section was scoped to
-layout: no stat changed what it computes, no endpoint changed what it returns,
+**Known, and not fixed here:** below ~856px a nine-digit total reaches the floor
+and an open rail can cover it; below 640px two open rails are wider than the
+window. Both are outside the range this section sweeps, and neither is reachable
+without deliberately narrowing the window past the point where the app has a
+usable column at all.
+
+**Not fixed here, and unchanged:** B3, B4, B5, S1–S7. This amendment was scoped
+to layout: no stat changed what it computes, no endpoint changed what it returns,
 and no copy changed anywhere.

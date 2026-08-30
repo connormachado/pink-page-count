@@ -4,31 +4,29 @@ import { paletteColors, suggestColor } from "../palette";
 import type { Class } from "../types";
 import { ClassDot } from "./ClassDot";
 import { buttonClasses, inputClasses, quietButtonClasses } from "./Field";
-import type { PanelChrome } from "./Rail";
 
 type Props = {
   classes: Class[];
   onChanged: () => Promise<void>;
   onUnreachable: () => void;
-  /** Who owns the disclosure -- see PanelChrome. The stacked card below the
-   * entry log, or bare inside the right rail (DECISIONS.md 17). */
-  chrome?: PanelChrome;
 };
 
 /** Class management, deliberately out of the way.
  *
- * Closed by default and never on the save path: a collapsed <details> under
- * the entry list on a narrow window, a collapsed rail at the right edge on a
- * wide one. Either way it costs nothing to ignore forever. No router, no
+ * Closed by default and never on the save path: a collapsed rail at the right
+ * edge, at every width. It costs nothing to ignore forever. No router, no
  * second screen (DECISIONS.md 12.4, 17, and section 6 still says no router).
+ *
+ * No wrapper of its own -- the rail is the card, the label and the disclosure
+ * (17.4).
  *
  * Nothing in here displays a count, a total, or a comparison between classes.
  * The API returns none, so there is nothing to render (DECISIONS.md 12.5). */
-export function ClassManager({ classes, onChanged, onUnreachable, chrome = "details" }: Props) {
+export function ClassManager({ classes, onChanged, onUnreachable }: Props) {
   const live = classes.filter((item) => !item.archived);
 
-  const body = (
-    <div className={chrome === "details" ? "mt-4 flex flex-col gap-5" : "flex flex-col gap-5"}>
+  return (
+    <div className="flex flex-col gap-5">
       <NewClassForm
         live={live}
         onChanged={onChanged}
@@ -52,17 +50,6 @@ export function ClassManager({ classes, onChanged, onUnreachable, chrome = "deta
         </ul>
       )}
     </div>
-  );
-
-  if (chrome === "bare") return body;
-
-  return (
-    <details className="rounded-2xl border border-[var(--pink-edge)] bg-[var(--pink-surface)] px-5 py-4">
-      <summary className="cursor-pointer text-sm text-[var(--rose-muted)]">
-        Classes
-      </summary>
-      {body}
-    </details>
   );
 }
 

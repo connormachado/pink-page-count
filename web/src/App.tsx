@@ -8,14 +8,13 @@ import { EmptyNumber } from "./components/EmptyNumber";
 import { EntryForm } from "./components/EntryForm";
 import { ClassManager } from "./components/ClassManager";
 import { EntryList } from "./components/EntryList";
-import { Rail, type PanelChrome } from "./components/Rail";
+import { Rail } from "./components/Rail";
 import { SaveConfirmation } from "./components/SaveConfirmation";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { crossedMilestone } from "./milestones";
 import { FALLBACK_QUOTE, fetchQuote } from "./quote";
 import { chipFromSetting, selectStat, type StatKey } from "./stat";
 import { applyTheme, readResolvedTheme, writePaintCache, type SemanticToken } from "./theme";
-import { useRailLayout } from "./useRailLayout";
 import type { Class, Entry, Settings, Stats } from "./types";
 
 /** What a refresh was caused by. Only "save" -- a brand new entry -- may count
@@ -55,11 +54,9 @@ export default function App() {
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const [milestone, setMilestone] = useState<number | null>(null);
 
-  /** Whether the window is wide enough for the two edge rails, and whether
-   * each one is open. Purely where she is looking right now: none of it is
-   * sent to the server or written to settings.json, and a reload starts with
-   * both rails shut again (DECISIONS.md 17). */
-  const railed = useRailLayout();
+  /** Whether each rail is open. Purely where she is looking right now: it is
+   * not sent to the server, not written to settings.json, and a reload starts
+   * with both rails shut again (DECISIONS.md 17.3). */
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [classesOpen, setClassesOpen] = useState(false);
 
@@ -240,23 +237,20 @@ export default function App() {
   // 7am is an ordinary morning and still renders a 0 (DECISIONS.md 11).
   const nothingLoggedYet = stats.entry_count === 0;
 
-  // The same two panels, in whichever frame the window is wide enough for.
-  // One instance of each is mounted at a time -- a rail and a stacked card
-  // are two chromes around one body, never two copies of it (DECISIONS.md
-  // 17). A class or settings change is an ordinary "change" refresh in both:
-  // it never counts up and never celebrates (11.2, 12.4, 13).
-  const classManager = (chrome: PanelChrome) => (
+  // The two panels the rails carry. One instance of each, in one place: the
+  // rails are the only frame they have (DECISIONS.md 17.4). A class or
+  // settings change is an ordinary "change" refresh: it never counts up and
+  // never celebrates (11.2, 12.4, 13).
+  const classManager = (
     <ClassManager
-      chrome={chrome}
       classes={classes}
       onChanged={() => refresh("change")}
       onUnreachable={() => setUnreachable(true)}
     />
   );
 
-  const settingsPanel = (chrome: PanelChrome) => (
+  const settingsPanel = (
     <SettingsPanel
-      chrome={chrome}
       settings={settings}
       resolvedTheme={resolvedTheme}
       onChanged={() => refresh("change")}
@@ -295,17 +289,6 @@ export default function App() {
           onUnreachable={() => setUnreachable(true)}
         />
 
-        {/* Narrow windows only: the two panels stack under the entry log,
-            exactly where they lived before the rails existed. Above the
-            breakpoint they are rendered below instead, and nothing here is
-            mounted (DECISIONS.md 17). */}
-        {railed ? null : (
-          <>
-            {classManager("details")}
-            {settingsPanel("details")}
-          </>
-        )}
-
         {/* A backup, not a feature: a plain link, no fetch/blob JS. The browser
             triggers the download itself from the Content-Disposition header the
             server sends back (DECISIONS.md 4.4). It is not Settings and it is
@@ -322,29 +305,26 @@ export default function App() {
       </Shell>
 
       {/* Fixed to the viewport edges, so neither one can shift the column
-          above by a pixel however it is opened (DECISIONS.md 17). Both may
-          be open at once; neither remembers that it was. */}
-      {railed ? (
-        <>
-          <Rail
-            side="left"
-            label="Settings"
-            open={settingsOpen}
-            onToggle={() => setSettingsOpen((open) => !open)}
-          >
-            {settingsPanel("bare")}
-          </Rail>
+          above by a pixel however it is opened, and present at every width --
+          there is no second layout to fall back to (DECISIONS.md 17.2). Both
+          may be open at once; neither remembers that it was. */}
+      <Rail
+        side="left"
+        label="Settings"
+        open={settingsOpen}
+        onToggle={() => setSettingsOpen((open) => !open)}
+      >
+        {settingsPanel}
+      </Rail>
 
-          <Rail
-            side="right"
-            label="Classes"
-            open={classesOpen}
-            onToggle={() => setClassesOpen((open) => !open)}
-          >
-            {classManager("bare")}
-          </Rail>
-        </>
-      ) : null}
+      <Rail
+        side="right"
+        label="Classes"
+        open={classesOpen}
+        onToggle={() => setClassesOpen((open) => !open)}
+      >
+        {classManager}
+      </Rail>
     </>
   );
 }

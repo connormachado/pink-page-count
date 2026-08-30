@@ -1,14 +1,5 @@
 import { useId, type ReactNode } from "react";
 
-/** Which wrapper a collapsible panel draws around its own body.
- *
- * "details" is the stacked card this app has always used under the entry
- * log. "bare" is the same body with nothing around it, for when a Rail is
- * already supplying the card, the label, and the disclosure. The controls
- * inside are identical in both -- this picks the frame, never the contents
- * (DECISIONS.md 17). */
-export type PanelChrome = "details" | "bare";
-
 type Props = {
   /** Which viewport edge this rail is pinned to. */
   side: "left" | "right";
@@ -20,12 +11,14 @@ type Props = {
   children: ReactNode;
 };
 
-/** One collapsible edge rail (DECISIONS.md 17).
+/** One collapsible edge rail (DECISIONS.md 17). There is one of these at each
+ * edge at every width; nothing about it is conditional on a breakpoint.
  *
  * The rail is `position: fixed`, which is the whole reason the center column
  * cannot move: a fixed element is out of flow, so opening a rail changes no
- * other element's width or offset. The guarantee is structural, not a set of
- * widths that happen to add up.
+ * other element's width or offset, and an open panel overlays the column
+ * rather than displacing it. The guarantee is structural, not a set of widths
+ * that happen to add up.
  *
  * One button, not two. The vertical tab stays put at the viewport edge in
  * both states and the panel grows inward beside it, so a keyboard user who
