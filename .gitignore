@@ -19,8 +19,13 @@ web/*.tsbuildinfo
 /packaging/dist/
 /packaging/build/
 
-# Other files
-build-send-workflow.md
+# build-send-workflow.md is deliberately NOT ignored, and the rule that ignored
+# it (e9db79d, "gitignored it") is gone rather than negated -- it named that one
+# file and protected nothing else. It is the procedure for `make send`, the one
+# operation with a silent failure mode: a hand-rolled `ditto` zip skips the check
+# at Makefile:32, and a fixed filename makes the recipient open last week's build
+# with no symptom (DECISIONS.md 15.8.1). Untracked it existed on one disk and did
+# not survive a clone. It holds no secrets.
 
 # Release zips. Anchored to the repo root so nothing under web/ or packaging/ is
 # caught by accident. A glob rather than a fixed name on purpose: `make zip`
