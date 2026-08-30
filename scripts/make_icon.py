@@ -1,6 +1,8 @@
 """Generates AppIcon.icns for the Desktop launcher. Stdlib only (struct + zlib
-+ math) -- no new dependency, so the icon can be regenerated any time the
---ink token in web/src/tokens.css ever changes (DECISIONS.md 9.1, 15.7).
++ math) -- no new dependency, so the icon can be regenerated any time its
+geometry or its two colours change (DECISIONS.md 15.7). Those colours are the
+icon's own and no longer mirror web/src/tokens.css: a token change does not
+oblige a re-run any more (15.7.4, 15.7.5).
 
 Run from the repo root:
 
@@ -9,9 +11,9 @@ Run from the repo root:
 Requires `iconutil` (built into macOS) to assemble the final .icns.
 
 The icon is one flat ICON_BG rounded square -- no inset, one colour edge to
-edge (15.7.4) -- carrying a scales-of-justice mark in --ink. The rounded
-square's size and corner radius are the Phase 2 ones, unchanged; only the fill
-changed. The mark is the drawing in `scales-mark.svg` at the repo root,
+edge (15.7.4) -- carrying a scales-of-justice mark in pure black (15.7.5). The
+rounded square's size and corner radius are the Phase 2 ones, unchanged; only
+the two fills changed. The mark is the drawing in `scales-mark.svg` at the root,
 rasterized here rather than parsed -- there is no SVG library in this project
 and there is not going to be one. Its whole geometry is parameterized in MARK
 below, in the SVG's own 100x100 units, so every number can be read straight off
@@ -35,11 +37,11 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# The two hex literals here. INK is the frozen --ink token (DECISIONS.md 9.1);
-# ICON_BG is the icon's own flat background and has no counterpart in
-# tokens.css, because nothing in the app renders it (15.7.4).
+# The two hex literals here. Neither is a token any more, and neither tracks
+# tokens.css -- the icon has its own two colours, for the reasons in 15.7.4
+# (the plate) and 15.7.5 (the mark). Do not "restore" either to a token value.
 ICON_BG = (0xED, 0xB8, 0xCE)  # the one colour the whole plate is, edge to edge
-INK = (0x2B, 0x1A, 0x22)  # --ink: all primary text; here, the scales mark (15.7)
+MARK_INK = (0x00, 0x00, 0x00)  # the scales mark: pure black, not --ink (15.7.5)
 
 # The sizes iconutil expects in an .iconset, by output filename.
 ICONSET_SIZES = {
@@ -489,7 +491,7 @@ def _mark_coverage(px: int, py: int, cx: float, cy: float, size: int, ss: int) -
 
 def _render(size: int) -> bytes:
     """RGBA pixel bytes for one icon size: a single flat ICON_BG rounded square
-    on a transparent background, with the --ink scales mark composited over
+    on a transparent background, with the black scales mark composited over
     it. One colour behind the mark, edge to edge -- see 15.7.4."""
     cx = cy = size / 2.0
 
@@ -524,9 +526,9 @@ def _render(size: int) -> bytes:
             if mark_row and mx0 <= x <= mx1:
                 mark_t = _mark_coverage(px, py, cx, cy, size, ss)
                 if mark_t > 0.0:
-                    r += (INK[0] - r) * mark_t
-                    g += (INK[1] - g) * mark_t
-                    b += (INK[2] - b) * mark_t
+                    r += (MARK_INK[0] - r) * mark_t
+                    g += (MARK_INK[1] - g) * mark_t
+                    b += (MARK_INK[2] - b) * mark_t
 
             pixels[offset] = int(r)
             pixels[offset + 1] = int(g)
