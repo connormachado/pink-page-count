@@ -76,5 +76,42 @@ The arc of the moral universe is long, but it bends toward justice.||Theodore Pa
 I ask no favor for my sex. All I ask of our brethren is that they take their feet off our necks.||Sarah Grimké, quoted by Ruth Bader Ginsburg
 #
 # ============================================================
+# ADDED — a second pass, warmer register. Every line screened
+# against 10.5: nothing about discipline, grinding, catching up,
+# falling behind, or what she should be doing.
+# ============================================================
+#
+# --- Well documented ---
+Each time a man stands up for an ideal, or acts to improve the lot of others, he sends forth a tiny ripple of hope.||Robert F. Kennedy
+The world is before you, and you need not take it or leave it as it was when you came in.||James Baldwin
+Freedom is not something that anybody can be given. Freedom is something people take.||James Baldwin
+Caring for myself is not self-indulgence, it is self-preservation, and that is an act of political warfare.||Audre Lorde
+There is no such thing as a single-issue struggle because we do not live single-issue lives.||Audre Lorde
+The most common way people give up their power is by thinking they don't have any.||Alice Walker
+Justice is what love looks like in public.||Cornel West
+Hope is not the conviction that something will turn out well, but the certainty that something makes sense, regardless of how it turns out.||Václav Havel
+Do not be daunted by the enormity of the world's grief.||Rami Shapiro, rendering Pirkei Avot
+We are volcanoes. When we women offer our experience as our truth, all the maps change.||Ursula K. Le Guin
+#
+# --- The craft ---
+Books are a uniquely portable magic.||Stephen King
+There is no frigate like a book to take us lands away.||Emily Dickinson
+A word after a word after a word is power.||Margaret Atwood
+You do not have to be good. You only have to let the soft animal of your body love what it loves.||Mary Oliver
+Instructions for living a life: Pay attention. Be astonished. Tell about it.||Mary Oliver
+#
+# --- Nature ---
+What you do makes a difference, and you have to decide what kind of difference you want to make.||Jane Goodall
+In every walk with nature one receives far more than he seeks.||John Muir
+The clearest way into the Universe is through a forest wilderness.||John Muir
+When we see land as a community to which we belong, we may begin to use it with love and respect.||Aldo Leopold
+#
+# --- Widely circulated, sourcing looser ---
+It always seems impossible until it's done.||Nelson Mandela
+Never doubt that a small group of thoughtful, committed citizens can change the world; indeed, it's the only thing that ever has.||Margaret Mead
+I am no longer accepting the things I cannot change. I am changing the things I cannot accept.||Angela Davis
+Somewhere, something incredible is waiting to be known.||Carl Sagan
+#
+# ============================================================
 # Add your own in my-quotes.txt — same format, survives updates.
 # ============================================================
