@@ -49,13 +49,13 @@ function patchCallCount(fetchMock: ReturnType<typeof stubFetch>, path: string) {
 
 async function openSettings(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByText("Settings"));
-  return within(screen.getByText("Settings").closest("details") as HTMLElement);
+  return within(screen.getByRole("complementary", { name: "Settings" }));
 }
 
 /** The main chip row, scoped away from the settings panel's own default-chip
  * control -- both use the same three labels ("All-time"/"Today"/"Streak"),
- * and a closed <details>'s content is still queryable in jsdom, so an
- * unscoped query is ambiguous. */
+ * and a closed rail's panel is still queryable in jsdom (its visibility is
+ * CSS, which these tests do not load), so an unscoped query is ambiguous. */
 function chipsGroup() {
   return within(screen.getByRole("group", { name: "Which number to show" }));
 }
@@ -182,8 +182,12 @@ describe("theme reconciliation", () => {
 describe("the settings panel", () => {
   it("is closed by default", async () => {
     await boot();
-    const details = screen.getByText("Settings").closest("details");
-    expect(details).not.toHaveAttribute("open");
+    const rail = screen.getByRole("complementary", { name: "Settings" });
+    expect(rail).toHaveAttribute("data-open", "false");
+    expect(within(rail).getByRole("button", { name: "Settings" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
   });
 });
 

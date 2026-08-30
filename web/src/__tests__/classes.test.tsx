@@ -247,8 +247,8 @@ describe("the class manager", () => {
     const user = userEvent.setup();
     await openManager(user);
 
-    const manager = screen.getByText("Classes").closest("details");
-    const text = manager?.textContent ?? "";
+    const manager = screen.getByRole("complementary", { name: "Classes" });
+    const text = manager.textContent ?? "";
     expect(text).not.toMatch(/\d+\s*(pages?|entries|entry)\b/i);
     expect(text).not.toMatch(/ahead|behind|most|least|compared/i);
   });
