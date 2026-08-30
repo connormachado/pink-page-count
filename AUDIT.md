@@ -384,3 +384,25 @@ copy of the reading log without saying so. Those three, plus the first-write pat
 they feed at `app/storage.py:161`, `app/classes.py:132`, and `app/settings.py:173`,
 are the whole of B1 — and the reason the storage-path move should land, with its
 DECISIONS.md amendment, before anything is frozen.
+
+---
+
+## V1 review blocker status
+
+**Everything above this line is the original audit and is unmodified.** This section
+was appended later, and it is about a *different* document: REVIEW.md's three SHIP
+BLOCKERS, not this file's B1–B6. REVIEW.md is read-only history and records all three
+as open, so it cannot carry their current status; this is where it lives.
+
+**The two numbering schemes collide and mean different things.** REVIEW.md BLOCKER 3
+is `quotes.txt`; this file's B3 is the corrupt-file halt with nowhere to show itself.
+Nothing here says anything about this file's own B1–B6 or S1–S7 — for those, REVIEW.md's
+"STILL OPEN FROM AUDIT.md" table is the last thing that checked them one by one.
+
+| REVIEW.md blocker | Status | Where it stands |
+|---|---|---|
+| **BLOCKER 1** — the bundle only runs on macOS 26; three of four recipients see nothing | **Resolved** in commit `1836ca7` | `MACOSX_DEPLOYMENT_TARGET=11.0` declared in `packaging/build_app.sh`, built from python.org's universal2 framework Python in `.venv-build`, architecture pinned with `arch`, and `packaging/check_deployment_target.py` failing the build over both the `.app` and the zip. Recorded in DECISIONS.md 15.8, with the do-not-undo list at 15.8.1. Toolchain only — no schema, storage, endpoint, or app-code change. |
+| **BLOCKER 2** — the install instructions describe a Gatekeeper flow Apple removed | **Open** | `how-to-install.md:7` still leads with right-click → Open → Open, with the Sequoia-and-later route at `:9` written as the exception. Same stale advice at `README.md:267`, `packaging/build_app.sh:319`, `DECISIONS.md:1820`. (REVIEW.md's line numbers for the last two predate `1836ca7` and have shifted; these are current.) The bundle is still unsigned and un-notarized — DECISIONS.md 15.6. |
+| **BLOCKER 3** — `quotes.txt` ships an unreviewed block and several §8 violations | **Open** | `quotes.txt:66` still reads "TIER B — widely circulated, sourcing looser. Review before shipping.", with `:7` repeating the instruction, and the block below it is still shipped. None of the §8 lines REVIEW.md names has been changed. |
+
+REVIEW.md's FIX SOON items (4–10) are untouched and are not tracked here.

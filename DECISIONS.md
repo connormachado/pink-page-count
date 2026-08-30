@@ -605,6 +605,10 @@ requirements-build.txt  pyinstaller. BUILD-time only -- nothing in app/
 run.command             double-clickable launcher
 update.command          pulls new code; never touches a dirty tree, never
                         starts or stops the server (Phase 4, 5.2)
+Makefile                build / install / zip / send over build_app.sh. `zip`
+                        writes a DATE-STAMPED archive into packaging/dist/ and
+                        re-runs the deployment-target check over it; `send`
+                        reveals that file in Finder for AirDrop (15.8, 15.8.1)
 AppIcon.icns            the Desktop launcher's icon, applied by hand via
                         Finder -> Get Info (Phase 4)
 scripts/
@@ -2221,6 +2225,50 @@ BLOCKER 3 (`quotes.txt`), and every FIX SOON item in REVIEW.md are untouched and
 still open. §15.6 stands as written except for its stated *reason* for
 arm64-only, which this section replaces: the build interpreter is universal2
 now, and the bundle is arm64 because the architecture is pinned to the host.
+
+### 15.8.1 The five invariants, and the ordinary action that undoes each
+
+15.8 argues all of this at length and is the reasoning of record. This section
+exists because the argument is long and the load-bearing facts are five lines
+buried in it — and because **every way to undo them is a reasonable-looking
+tidy-up**, not a mistake anyone would recognise as one. There is no test that
+fails and no message on screen: BLOCKER 1's whole character is that it is
+invisible on the build machine and total on every other one.
+
+| Invariant | Where it lives | The action that undoes it | What ships |
+|---|---|---|---|
+| `MACOSX_DEPLOYMENT_TARGET=11.0`, declared and never inherited | `build_app.sh:35-36` | deleting the export as redundant, since the two real mechanisms do the enforcing | nothing immediately — the value is then stated nowhere, and the next person to change the target changes one of the two mechanisms and not the other |
+| The build interpreter is python.org's universal2 framework Python | `build_app.sh:189-233` | pointing the build at `python3`, at `.venv`, or at Homebrew "because it's already there" | Homebrew bottles stamped for the build machine's macOS. On this machine that is `minos 26.0` on `libssl.3`/`libcrypto.3` |
+| `.venv-build` is a second virtualenv and is not `.venv` | `build_app.sh:96`, `.gitignore:4` | merging them — two venvs looks like an accident | `run.command:22` recreates `.venv` from whatever `python3` resolves to, which puts a Homebrew interpreter back **under the build** without anyone touching the build. The regression arrives through a routine dev action |
+| `HOST_ARCH` comes from `sysctl -n hw.optional.arm64` | `build_app.sh:69-73`, `Makefile:14` | replacing it with `uname -m`, which is shorter and looks equivalent | an Intel bundle for arm64 recipients. **`uname -m` is not a usable guard**: under Rosetta it reports `x86_64` too, so it *agrees with the wrong answer* — the assertion at `build_app.sh:262` passes while PyInstaller freezes x86_64. This is not hypothetical; it is what the first attempt at this fix did |
+| `check_deployment_target.py` fails, never warns, and runs over the zip as well as the `.app` | `build_app.sh:304`, `Makefile:32` | downgrading it to a warning; dropping the Makefile's second run as duplicated work | a warning at the end of a build whose last line is the path to a finished `.app` is a warning that ships. The zip is the thing that gets AirDropped, and BLOCKER 1 was present in both |
+
+Two properties of the check are also invariants, for reasons that are not
+obvious from reading it: it is **stdlib only and never shells out to `otool` or
+`vtool`** (those need the Xcode command line tools, and a check that silently
+no-ops on a machine without them is not a check), and **a path holding no
+Mach-O at all is an error**, not a pass (a scanner reporting "all clear"
+because it was aimed at the wrong directory is the same silence this exists to
+remove).
+
+#### Where the check actually sits in the build order
+
+Worth writing down exactly, because the useful guarantee is not the one it is
+easy to assume:
+
+- `build_app.sh:276` clears `packaging/dist` and `packaging/build` at the top of
+  the freeze, **before** the check at `:304`. So a failed check does *not* leave
+  the previous `packaging/dist` standing — it was deleted before PyInstaller
+  ran. That directory is build output and nothing should be recovered from it.
+- What a failed check does protect is everything downstream, because `install`
+  and `zip` both declare `build` as a prerequisite (`Makefile:23`, `:29`) and
+  make stops at the first failing recipe. The `rm -rf "$(APP_DEST)"` at
+  `Makefile:26` never runs, and the zip at `:31` is never written. **A failed
+  build therefore leaves the installed `/Applications/Pink Page Count.app` and
+  the last date-stamped zip exactly as they were** — the two artifacts a
+  recipient could actually be given.
+- `make zip` then runs the same check a second time over the finished archive
+  (`Makefile:32`), reading members in place; the zip is never extracted.
 
 ---
 

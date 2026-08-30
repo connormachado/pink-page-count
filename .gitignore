@@ -22,7 +22,14 @@ web/*.tsbuildinfo
 # Other files
 build-send-workflow.md
 
+# Release zips. Anchored to the repo root so nothing under web/ or packaging/ is
+# caught by accident. A glob rather than a fixed name on purpose: `make zip`
+# date-stamps the artifact (DECISIONS.md 15.8.1) and it belongs in
+# packaging/dist/, so a rule naming one filename would stop covering it the
+# moment the name changes -- which is exactly how a 15 MB build artifact came to
+# be sitting at the repo root.
+/*.zip
+
 # Finder droppings. Not source, and not this project's business.
 .DS_Store
-PinkPageCount.zip
 REVIEW.md
