@@ -15,3 +15,6 @@ web/*.tsbuildinfo
 # never match the tracked web/dist.
 /packaging/dist/
 /packaging/build/
+
+# Other files
+build-send-workflow.md
