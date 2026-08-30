@@ -12,15 +12,21 @@ import ast
 import hashlib
 import inspect
 import json
+from collections import Counter
 from datetime import date, timedelta
 from pathlib import Path
 
 from app import quotes as quotes_module
 from app.quotes import (
+    DECK_NAMESPACE,
     FALLBACK,
     FALLBACK_QUOTE,
     Quote,
     QuoteSource,
+    cycle_bounds,
+    cycle_position,
+    day_number,
+    deck,
     ensure_user_quotes_file,
     parse_line,
     parse_text,
@@ -29,6 +35,10 @@ from app.quotes import (
 
 SAMPLE = ["first quote", "second quote", "third quote", "fourth quote"]
 SAMPLE_RECORDS = [Quote(text, None) for text in SAMPLE]
+
+# A list the size of the shipped one, so the walks below cover a real cycle
+# length rather than a toy one.
+DECK_SAMPLE = [f"quote number {n:02d}" for n in range(51)]
 
 # The one file this repo actually ships, checked as itself further down.
 SHIPPED_QUOTES = Path(__file__).resolve().parent.parent / "quotes.txt"
@@ -65,21 +75,243 @@ def test_different_days_give_different_quotes(quotes_file: Path):
     assert len(seen) > 1
 
 
-def test_index_is_sha256_not_the_builtin_hash(quotes_file: Path):
-    """Pins process-stability.
+def test_the_deck_is_derived_with_sha256_not_the_builtin_hash():
+    """Pins process-stability, which is the whole reason the shuffle is hand-rolled.
 
-    Python randomizes str hashing per process (PYTHONHASHSEED), so an index built
-    on the builtin hash() would hand her a different quote after every restart.
-    Recomputing the expected index here independently locks sha256 in.
+    Python randomizes str hashing per process (PYTHONHASHSEED), so a deck built
+    on the builtin hash() would deal her a different order after every restart --
+    and `random.shuffle` promises nothing across Python versions either.
+    Recomputing the Fisher-Yates draws here from sha256 alone locks the
+    derivation in: if the implementation ever reaches for another source of
+    randomness, this fails.
     """
-    day = date(2026, 8, 24)
-    digest = hashlib.sha256(day.isoformat().encode("utf-8")).digest()
-    expected = int.from_bytes(digest[:8], "big") % len(SAMPLE)
+    cycle, count = 14507, len(DECK_SAMPLE)
+    expected = list(range(count))
+    for i in range(count - 1, 0, -1):
+        material = f"{DECK_NAMESPACE}|{count}|{cycle}|{i}".encode("utf-8")
+        j = int.from_bytes(hashlib.sha256(material).digest()[:8], "big") % (i + 1)
+        expected[i], expected[j] = expected[j], expected[i]
 
-    assert quote_index(day, len(SAMPLE)) == expected
+    assert deck(cycle, count) == expected
 
-    write_quotes(quotes_file, SAMPLE)
-    assert QuoteSource(quotes_file).for_day(day).text == SAMPLE[expected]
+
+def test_the_deck_is_pinned_so_no_refactor_can_quietly_move_a_quote():
+    """A literal, not a recomputation.
+
+    Every other test here would still pass if the seed string changed, because
+    they all check shape. This one checks the actual answer, so a change that
+    moves every quote in every year onto a different day has to be made on
+    purpose and shows up in this diff.
+    """
+    assert deck(0, 4) == [0, 2, 3, 1]
+    assert deck(1, 4) == [3, 1, 0, 2]
+    assert deck(0, 1) == [0]
+    assert deck(14507, 51)[:6] == [42, 23, 30, 27, 13, 1]
+
+
+def test_the_deck_is_always_a_permutation():
+    """Dealing every card exactly once is the property the whole fix rests on."""
+    for count in range(1, 60):
+        for cycle in (0, 1, 2, 14507, 999_999):
+            assert sorted(deck(cycle, count)) == list(range(count))
+
+
+def test_quote_index_walks_the_deck_one_card_a_day():
+    """Consecutive days are consecutive positions in the same deck."""
+    count = len(DECK_SAMPLE)
+    first, _ = cycle_bounds(date(2026, 8, 30), count)
+    order = deck(cycle_position(first, count)[0], count)
+    for position in range(count):
+        day = date.fromordinal(day_number(first) + position)
+        assert quote_index(day, count) == order[position]
+
+
+# -- the promise: no repeat until the list is exhausted ------------------ #
+
+
+def test_a_full_cycle_deals_every_quote_exactly_once(quotes_file: Path):
+    """51 consecutive days, 51 quotes, no repeats. This is the bug's fix.
+
+    The walk starts on a cycle boundary because that is what the promise is
+    about: a *pass through the list*. An arbitrary 51-day window cannot have
+    this property and never could -- if every window of length N were a
+    permutation then s[i] would equal s[i+N] for every i, which is to say the
+    list would be dealt in the same order forever and never reshuffle at all.
+    """
+    write_quotes(quotes_file, DECK_SAMPLE)
+    source = QuoteSource(quotes_file)
+    first, last = cycle_bounds(date(2026, 8, 30), len(DECK_SAMPLE))
+    assert (last - first).days == len(DECK_SAMPLE) - 1
+
+    walk = [source.for_day(first + timedelta(days=n)).text for n in range(51)]
+
+    assert len(walk) == 51
+    assert sorted(walk) == sorted(DECK_SAMPLE)
+    assert len(set(walk)) == 51
+
+
+def test_two_full_cycles_deal_every_quote_exactly_twice(quotes_file: Path):
+    """102 days: two complete passes, each one complete on its own."""
+    write_quotes(quotes_file, DECK_SAMPLE)
+    source = QuoteSource(quotes_file)
+    first, _ = cycle_bounds(date(2026, 8, 30), len(DECK_SAMPLE))
+
+    walk = [source.for_day(first + timedelta(days=n)).text for n in range(102)]
+
+    assert Counter(walk) == Counter({text: 2 for text in DECK_SAMPLE})
+    assert len(set(walk[:51])) == 51
+    assert len(set(walk[51:])) == 51
+
+
+def test_consecutive_cycles_are_dealt_in_different_orders(quotes_file: Path):
+    """A new deck is shuffled when the old one runs out -- not replayed."""
+    write_quotes(quotes_file, DECK_SAMPLE)
+    source = QuoteSource(quotes_file)
+    first, _ = cycle_bounds(date(2026, 8, 30), len(DECK_SAMPLE))
+
+    one = [source.for_day(first + timedelta(days=n)).text for n in range(51)]
+    two = [source.for_day(first + timedelta(days=51 + n)).text for n in range(51)]
+
+    assert sorted(one) == sorted(two)
+    assert one != two
+
+
+def test_no_quote_ever_waits_longer_than_two_cycles(quotes_file: Path):
+    """What the promise buys over the old sha256 % len: a bounded wait.
+
+    Worst case is last card of one deck to first card of the next, which is
+    2N-1 days apart. The old form had no bound at all -- a quote could sit
+    unshown for years while another turned up twice in a fortnight.
+    """
+    write_quotes(quotes_file, DECK_SAMPLE)
+    source = QuoteSource(quotes_file)
+    count = len(DECK_SAMPLE)
+    first, _ = cycle_bounds(date(2026, 1, 1), count)
+
+    last_seen: dict[str, int] = {}
+    worst = 0
+    for n in range(count * 12):
+        text = source.for_day(first + timedelta(days=n)).text
+        if text in last_seen:
+            worst = max(worst, n - last_seen[text])
+        last_seen[text] = n
+
+    assert worst <= 2 * count - 1
+    assert len(last_seen) == count
+
+
+def test_the_shipped_list_is_dealt_completely_in_one_cycle():
+    """The real file, the real count, the real walk."""
+    source = QuoteSource(SHIPPED_QUOTES)
+    quotes = source.load()
+    first, last = cycle_bounds(date(2026, 8, 30), len(quotes))
+
+    walk = [source.for_day(first + timedelta(days=n)).text for n in range(len(quotes))]
+
+    assert sorted(walk) == sorted(texts(quotes))
+    assert len(set(walk)) == len(quotes)
+    assert first + timedelta(days=len(quotes) - 1) == last
+
+
+def test_cycle_bounds_frames_the_pass_the_day_falls_in():
+    count = len(DECK_SAMPLE)
+    first, last = cycle_bounds(date(2026, 8, 30), count)
+    assert first <= date(2026, 8, 30) <= last
+    assert (last - first).days == count - 1
+    # Every day inside those bounds reports the same bounds; the day after
+    # reports the next pass.
+    for n in range(count):
+        assert cycle_bounds(first + timedelta(days=n), count) == (first, last)
+    assert cycle_bounds(last + timedelta(days=1), count)[0] == last + timedelta(days=1)
+
+
+def test_a_one_quote_list_is_that_quote_every_day(quotes_file: Path):
+    """count == 1 must not divide by zero, wrap oddly, or blank the line."""
+    write_quotes(quotes_file, ["the only one"])
+    source = QuoteSource(quotes_file)
+    for n in range(10):
+        assert source.for_day(date(2026, 8, 30) + timedelta(days=n)).text == "the only one"
+
+
+# -- the list changing underneath a cycle -------------------------------- #
+#
+# She edits my-quotes.txt whenever she likes, and the files are read on every
+# request (10.4), so the length can change between one page load and the next.
+# None of that may raise, and none of it may leave the message area blank.
+
+
+def test_adding_a_quote_mid_cycle_does_not_crash(quotes_file: Path, user_quotes_file: Path):
+    write_quotes(quotes_file, DECK_SAMPLE)
+    source = QuoteSource(quotes_file, user_quotes_file)
+    day = date(2026, 9, 15)
+    assert source.for_day(day).text in DECK_SAMPLE
+
+    write_quotes(user_quotes_file, ["a line she just typed"])
+    after = source.for_day(day)
+    assert after.text in DECK_SAMPLE + ["a line she just typed"]
+
+
+def test_a_list_that_grows_every_day_never_indexes_past_the_end(
+    quotes_file: Path, user_quotes_file: Path
+):
+    """The index is computed from the count that was just measured, so a list
+    that changes size between requests can never point off the end."""
+    write_quotes(quotes_file, DECK_SAMPLE)
+    source = QuoteSource(quotes_file, user_quotes_file)
+    mine: list[str] = []
+    for n in range(60):
+        mine.append(f"mine {n}")
+        write_quotes(user_quotes_file, mine)
+        quote = source.for_day(date(2026, 9, 1) + timedelta(days=n))
+        assert quote.text in DECK_SAMPLE + mine
+
+
+def test_a_list_that_shrinks_to_nothing_mid_cycle_falls_back(quotes_file: Path):
+    """Emptying the file is not an error and never leaves a blank line (10.4)."""
+    write_quotes(quotes_file, DECK_SAMPLE)
+    source = QuoteSource(quotes_file)
+    day = date(2026, 9, 15)
+    assert source.for_day(day).text in DECK_SAMPLE
+
+    quotes_file.write_text("", encoding="utf-8")
+    assert source.for_day(day) == FALLBACK_QUOTE
+
+    quotes_file.unlink()
+    assert source.for_day(day) == FALLBACK_QUOTE
+
+
+def test_the_grown_list_is_itself_dealt_completely(
+    quotes_file: Path, user_quotes_file: Path
+):
+    """A quote added mid-cycle is not stranded: the next full pass over the new
+    length deals it along with everything else, exactly once."""
+    write_quotes(quotes_file, DECK_SAMPLE)
+    write_quotes(user_quotes_file, ["hers, added late"])
+    source = QuoteSource(quotes_file, user_quotes_file)
+    grown = DECK_SAMPLE + ["hers, added late"]
+
+    first, _ = cycle_bounds(date(2026, 9, 15), len(grown))
+    walk = [source.for_day(first + timedelta(days=n)).text for n in range(len(grown))]
+
+    assert sorted(walk) == sorted(grown)
+
+
+def test_the_endpoint_survives_the_file_changing_between_requests(
+    client, quotes_file: Path
+):
+    """The list shrinking one line at a time under a live server, down to
+    nothing and back. Every response is a 200 with words in it."""
+    for n in range(len(DECK_SAMPLE), 0, -1):
+        write_quotes(quotes_file, DECK_SAMPLE[:n])
+        response = client.get("/api/quote")
+        assert response.status_code == 200
+        assert response.json()["text"] in DECK_SAMPLE
+
+    quotes_file.write_text("", encoding="utf-8")
+    assert client.get("/api/quote").json() == {"text": FALLBACK, "attribution": None}
+
+    write_quotes(quotes_file, DECK_SAMPLE)
+    assert client.get("/api/quote").json()["text"] in DECK_SAMPLE
 
 
 # -- the file format ---------------------------------------------------- #
@@ -291,12 +523,15 @@ def test_quotes_module_cannot_reach_the_reading_log():
             imported.update(alias.name for alias in node.names)
 
     # `dataclasses` joined the list when a quote stopped being a bare string
-    # (DECISIONS.md 10.1, amended). It is stdlib, knows nothing about the file
-    # system, and cannot reach a path -- the forbidden list below is what this
-    # test is actually defending.
+    # (DECISIONS.md 10.1, amended). `daytime` LEFT it when rotation became a
+    # walk over day numbers (10.3, amended) -- the module is handed a resolved
+    # logical date and only needs its ordinal, so it no longer imports anything
+    # from this project at all. Everything left is stdlib that knows nothing
+    # about the file system; the forbidden list below is what this test is
+    # actually defending.
     assert imported <= {"hashlib", "datetime", "date", "pathlib", "Path",
                         "dataclasses", "dataclass",
-                        "daytime", "day_key_str", "annotations", "__future__"}
+                        "annotations", "__future__"}
     for forbidden in ("storage", "Storage", "config", "json"):
         assert forbidden not in imported
 

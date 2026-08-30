@@ -1,11 +1,12 @@
 """The daily quote. See DECISIONS.md sections 10 and 8.
 
 This module is deliberately tiny and deliberately isolated. Look at the import
-list: `hashlib`, `pathlib`, `dataclasses`, and one function from `daytime`. It
-does not import `storage`, it does not import `config`, and it never learns the
-path to the reading log. That is not restraint at call time -- it is the
-structural guarantee DECISIONS.md 10 asks for. Editing quotes cannot touch the
-reading log because nothing in this file knows the reading log exists.
+list: `hashlib`, `pathlib`, and `dataclasses`, all stdlib and none of them able
+to name a file on their own. It does not import `storage`, it does not import
+`config`, and it never learns the path to the reading log. That is not restraint
+at call time -- it is the structural guarantee DECISIONS.md 10 asks for. Editing
+quotes cannot touch the reading log because nothing in this file knows the
+reading log exists.
 
 DECISIONS.md 10.1 (amended): a `QuoteSource` reads two files -- the bundled,
 canonical list and an optional file the user owns -- and unions them. Both
@@ -16,6 +17,12 @@ DECISIONS.md 10.2 (amended): a line is `<quote text>||<attributor>`. The
 attributor is optional and a line without one is an ordinary, valid record --
 never a warning, never a skip. A hand-written file of bare sentences parses
 exactly as it did before this feature existed.
+
+DECISIONS.md 10.3 (amended): rotation is a walk through a shuffled deck, not
+`sha256(day) % len`. Every quote is dealt once before any is dealt twice. The
+walk is derived from the day count and the list length and is written down
+nowhere -- there is no rotation state on disk, and the module's import list got
+SHORTER as a result, not longer.
 """
 
 from __future__ import annotations
@@ -24,8 +31,6 @@ import hashlib
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-
-from .daytime import day_key_str
 
 # Shown when the quote files are missing, empty, or hold nothing but comments.
 # The message area is never blank and this path never raises -- DECISIONS.md 10.
@@ -158,10 +163,9 @@ class QuoteSource:
     def for_day(self, day: date) -> Quote:
         """The quote for one logical day. Same day in, same quote out. Always.
 
-        The index is derived with sha256 rather than the builtin hash(): Python
-        randomizes string hashing per process (PYTHONHASHSEED), so hash() would
-        hand back a different quote after every server restart. sha256 of the
-        day key is stable across processes, machines, and years.
+        Reads the files first, so a list that grew since the last request is the
+        list this day is resolved against. The index can therefore never point
+        past the end: it is computed from the count that was just measured.
         """
         quotes = self.load()
         if not quotes:
@@ -169,10 +173,91 @@ class QuoteSource:
         return quotes[quote_index(day, len(quotes))]
 
 
+# -- rotation, DECISIONS.md 10.3 (amended) ------------------------------- #
+#
+# Deal a shuffled deck, one card a day, and shuffle a fresh one when the deck
+# runs out. The old form -- sha256(day_key) % len -- was a fresh independent
+# draw every day, which is not a rotation at all: it could repeat a quote a
+# fortnight apart while another had never been shown once.
+
+# Everything about the deal hangs off this string. Changing it reshuffles every
+# deck in every year, which is exactly why it is a named constant with a version
+# in it: a future change to the shuffle has to be made on purpose.
+DECK_NAMESPACE = "pink-page-count/quote-deck/v1"
+
+
+def day_number(day: date) -> int:
+    """The logical day as a plain count of days.
+
+    `date.toordinal()` counts from an arbitrary origin, which is all a rotation
+    needs -- it only ever looks at differences. The 4am boundary (DECISIONS.md
+    2.3) is applied by `daytime.day_key` before a date ever reaches this module,
+    so there is still no second implementation of it here; this function does
+    arithmetic on an answer someone else already gave.
+    """
+    return day.toordinal()
+
+
+def cycle_position(day: date, count: int) -> tuple[int, int]:
+    """(which pass through the list, how far into that pass) for one logical day.
+
+    Both fall out of one floor division, so the walk needs nothing remembered
+    between days: day N+1 lands on the next card because 'the next card' is
+    arithmetic, not a saved cursor.
+    """
+    return divmod(day_number(day), count)
+
+
+def deck(cycle: int, count: int) -> list[int]:
+    """The order one pass through the list is dealt in: a permutation of range(count).
+
+    Fisher-Yates, with every draw pulled from a sha256 stream keyed on the cycle
+    number instead of from `random`. Hand-rolled for the reason 10.3 already
+    gives for preferring sha256 to the builtin hash(): the answer has to be
+    identical across processes, machines, Python versions and years, and
+    `random`'s internals promise none of that. It also means this module needs
+    no import it did not already have.
+
+    Every index appears exactly once, so a pass deals every quote exactly once.
+
+    The draw is a 64-bit number reduced modulo at most `count`; for any list a
+    person would keep in a text file the resulting bias is on the order of
+    1e-17, which is not a number that shows up as a quote you saw too often.
+    """
+    order = list(range(count))
+    for i in range(count - 1, 0, -1):
+        j = _draw(cycle, count, i) % (i + 1)
+        order[i], order[j] = order[j], order[i]
+    return order
+
+
+def _draw(cycle: int, count: int, step: int) -> int:
+    """One deterministic 64-bit draw for one step of one deck's shuffle."""
+    material = f"{DECK_NAMESPACE}|{count}|{cycle}|{step}".encode("utf-8")
+    return int.from_bytes(hashlib.sha256(material).digest()[:8], "big")
+
+
 def quote_index(day: date, count: int) -> int:
-    """Which quote a logical day maps to. Deterministic, process-independent."""
-    digest = hashlib.sha256(day_key_str(day).encode("utf-8")).digest()
-    return int.from_bytes(digest[:8], "big") % count
+    """Which quote a logical day maps to. Deterministic, process-independent.
+
+    `count` must be at least 1; `for_day` returns the fallback before it gets
+    here when the list is empty.
+    """
+    cycle, position = cycle_position(day, count)
+    return deck(cycle, count)[position]
+
+
+def cycle_bounds(day: date, count: int) -> tuple[date, date]:
+    """First and last day of the pass through the list that `day` falls in.
+
+    The second date is the day the list is exhausted -- the last day of the
+    current deck, after which a new one is shuffled. Exposed because "when do we
+    run out of quotes" is a question worth being able to answer without running
+    the rotation by hand for a year.
+    """
+    _, position = cycle_position(day, count)
+    first = date.fromordinal(day_number(day) - position)
+    return first, date.fromordinal(day_number(first) + count - 1)
 
 
 USER_QUOTES_TEMPLATE = (
