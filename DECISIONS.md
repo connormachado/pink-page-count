@@ -608,9 +608,9 @@ update.command          pulls new code; never touches a dirty tree, never
 AppIcon.icns            the Desktop launcher's icon, applied by hand via
                         Finder -> Get Info (Phase 4)
 scripts/
-  make_icon.py          regenerates AppIcon.icns from the --pink-hot /
-                        --pink-surface / --ink tokens, incl. the scales mark
-                        (15.7). stdlib only (struct + zlib); no new dependency
+  make_icon.py          regenerates AppIcon.icns: a flat ICON_BG plate (15.7.4)
+                        carrying the scales mark in --ink (15.7). stdlib only
+                        (struct + zlib); no new dependency
 app/
   config.py             paths, port, env var names
   daytime.py            day_key() + ISO parse/format
@@ -1651,6 +1651,10 @@ Both are deliberately out of this session's scope and neither is started.
 
 ### 15.7 The app icon carries a scales-of-justice mark
 
+**The background this section describes is superseded by 15.7.4: the plate is now
+one flat colour, no inset. The mark, and everything 15.7.1--15.7.3 say about it,
+is unchanged.**
+
 `AppIcon.icns` is still the Phase 2 icon -- the `--pink-hot` (`#FF2E88`) rounded
 square with the `--pink-surface` (`#FFE8F0`) inset, both frozen tokens (9.1),
 unchanged in shape, colour and proportion. Added centred on it: a
@@ -1757,6 +1761,66 @@ moved: this mark is drawn to be correct at 128px and up, and to remain
 icon sharper at 32px, the answer is a separate simplified mark selected by size,
 not a thicker version of this one.** Do not edit `scales-mark.svg` or `MARK` to
 chase small-size crispness.
+
+#### 15.7.4 Amendment: the plate is one flat colour, and it is not a token
+
+**This replaces the two-tone background 15.7 opens with.** The `--pink-hot`
+rounded square with the `--pink-surface` inset is gone. The plate is now a single
+fill, edge to edge, behind the mark:
+
+```
+ICON_BG = (0xED, 0xB8, 0xCE)   # #EDB8CE
+```
+
+Connor asked for this directly, with a reference image, and was explicit about
+both halves of it: one solid colour, and *that* colour -- "I do not like the two
+different colours." So the reasoning below is a record of what the change costs,
+not a justification for making it.
+
+**Where `#EDB8CE` came from, honestly.** It was matched by eye against the
+reference image, not sampled from it -- the screenshot was in a macOS temp
+directory this project's tooling cannot read. Candidate swatches were rendered
+and compared side by side, and `#EDB8CE` was the closest. **It is now the
+icon's colour of record regardless**, and a future session should not go
+"correct" it toward some other pink on the theory that the match was
+approximate. If it is ever wrong, it will be wrong because Connor says so.
+
+**Why it is not in `tokens.css`, and why §9 still holds.** §9 says a hex literal
+appears in `tokens.css` and nowhere else in the repo. `make_icon.py` has always
+been the one exception, mirroring token values so the icon could be regenerated
+when they changed. `#EDB8CE` breaks the mirroring half of that: it is not a
+token, because **nothing in the app renders it.** There is no favicon, no
+`apple-touch-icon`, no in-app chrome that shows the icon; the only consumer is
+`iconutil`. Adding an `--icon-bg` token to `tokens.css` would put a value in the
+theme system that no theme can change and no component reads, which is worse
+than the exception. §9's rule is about *the app's* colours having one source, and
+this is not one of the app's colours. `--ink` is still mirrored, still a token,
+and still the mark's colour.
+
+`--pink-edge` (`#FFC2DA`) was the one existing token close enough to consider.
+It was rendered and rejected: it is visibly lighter and more saturated than the
+reference, and matching the reference was the actual request.
+
+**What did not change.** The rounded square's half-edge (`0.44`) and corner
+radius (`0.42` of the half-edge), every number in `MARK`, `scales-mark.svg`,
+the supersampling schedule, and all of 15.7.2's per-size measurements -- the
+mark's own rendering is untouched, so that table still stands. The `fit` scalar
+was originally set against the vanished `+/-0.32` inset; it was **kept at its
+old value anyway** rather than re-derived, so the mark is the same size it was.
+There is now more clearance around it, not less.
+
+Contrast drops and does not matter: `--ink` (`#2B1A22`) on `#EDB8CE` is 9.7:1,
+against 14.17:1 on the old `--pink-surface` inset. Both are far past any
+threshold, and the mark is a large graphic, not text. Worth noting for anyone
+tempted to darken the plate further: `--ink` on the *old* `--pink-hot` was only
+4.71:1, so the previous design's inset was doing real work. There is a lot of
+room below `#EDB8CE`, but not an unlimited amount.
+
+**A side effect worth recording: `--pink-hot` is now absent from the icon.** 15.7
+noted that the *mark* avoided `--pink-hot` because 9.1 reserves it for the
+primary numeral -- while the background it sat on was `--pink-hot` itself. That
+tension is gone, not because it was fixed, but because the background changed for
+an unrelated reason.
 
 ---
 

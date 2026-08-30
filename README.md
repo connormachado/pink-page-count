@@ -302,7 +302,7 @@ update.command    pulls new code; never touches a dirty tree or the server
 AppIcon.icns      the Desktop launcher's icon
 requirements.txt  what the server needs to run
 scripts/
-  make_icon.py    regenerates AppIcon.icns from the pink tokens
+  make_icon.py    regenerates AppIcon.icns: a flat pink plate, scales mark
 app/
   config.py       paths, port, environment variables
   daytime.py      timestamps and the 4am day boundary
