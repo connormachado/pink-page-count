@@ -633,7 +633,13 @@ packaging/              the frozen macOS bundle (15). Not used by any dev
   entry.py              PyInstaller's entry script; a stub over app.launcher
   PinkPageCount.spec    the spec: datas, hidden imports, BUNDLE/Info.plist
   build_app.sh          THE build command. Rebuilds web/dist first, or
-                        refuses if it is stale (15.4)
+                        refuses if it is stale (15.4). Declares the deployment
+                        target and the architecture, builds from python.org's
+                        interpreter, and fails if the bundle exceeds either
+                        (15.8)
+  check_deployment_target.py
+                        walks every Mach-O in the .app or the zip and reports
+                        the highest minos found (15.8). stdlib only, no otool
   dist/, build/         PyInstaller output. Gitignored, anchored with a
                         leading slash so they never match web/dist
 tests/
@@ -1818,6 +1824,13 @@ It is also **arm64 only**, because the Python that builds it is
 run this bundle at all. A universal2 build needs a universal2 Python
 interpreter first.
 
+**Amended by 15.8 on the second point only.** The build interpreter *is*
+universal2 now, so "because the Python that builds it is" no longer explains
+anything. The bundle is still arm64 only, and is still deliberately arm64 only,
+but now because `target_arch=None` resolves to an architecture 15.8 pins to the
+host rather than to one the interpreter left no choice about. The signing half
+of this section is unchanged and still open (REVIEW.md BLOCKER 2).
+
 Both are deliberately out of this session's scope and neither is started.
 
 ### 15.7 The app icon carries a scales-of-justice mark
@@ -2045,6 +2058,169 @@ At 16px the mark's densest pixels used to be a mid-brown against pink. They are
 now genuinely dark. 15.7.3 still stands unamended -- the chains are still
 sub-pixel below 64px, that is still accepted, and this did not fix it and was
 not trying to.
+
+### 15.8 The deployment target is declared, and the build fails if the bundle exceeds it
+
+**This closes REVIEW.md BLOCKER 1.** Nothing about the app changed: no schema, no
+storage semantics, no endpoint, no layout, no quote, not one line under `app/`
+or `web/`. `packaging/PinkPageCount.spec` is byte-for-byte unmodified,
+`target_arch` included. Only the toolchain that produces the binaries changed.
+
+#### What shipped, and why nobody could have seen it
+
+`packaging/dist/Pink Page Count.app/Contents/Frameworks/libssl.3.dylib` and
+`libcrypto.3.dylib` carried `LC_BUILD_VERSION minos 26.0`. **dyld refuses to
+load a Mach-O built for a macOS newer than the one running.** The `import ssl`
+that reaches them is unguarded on the startup path -- `app/launcher.py:43`
+imports `app.main`, which reaches `anyio/_core/_sockets.py:6` through fastapi
+and starlette, and `uvicorn/config.py:10` is a second one -- so on any recipient
+below macOS 26 the process dies at import.
+
+That is upstream of `app/launcher.py`, upstream of `app/notify.py`, and upstream
+of every branch §16 added. The recipient gets **one Dock bounce and nothing
+else**: no tab, no dialog, no log to ask them for. §16 was written to make sure
+the app always has a visible beginning and end; this defect arrives through a
+door §16 does not cover, because it happens before §16's code exists in the
+process.
+
+The cause was that **the build declared nothing and inherited everything.**
+PyInstaller does not compile a Python; it copies the one it is running under,
+plus every dylib that Python links against, into the bundle. The build ran on
+the dev virtualenv, which is Homebrew's `python@3.14`, and Homebrew builds its
+bottles for the machine that pours them. This machine runs macOS 26, so its
+`openssl@3` bottle is stamped `minos 26.0` and its `python@3.14` bottle `15.0`,
+and the bundle was stamped with them.
+
+#### The target is macOS 11.0 Big Sur
+
+Every Apple Silicon Mac ever sold shipped with Big Sur or later, so 11.0 covers
+every possible recipient with nothing to check per person.
+
+`MACOSX_DEPLOYMENT_TARGET=11.0` is exported at the top of
+`packaging/build_app.sh`, so the value is stated in one place. **The export is
+not the mechanism and must not be mistaken for one:** it governs anything that
+*compiles* during the build, and it cannot rewrite a prebuilt dylib -- the
+Homebrew bottles were already stamped on disk. Two things actually enforce it,
+and the export is only where they both read the number from.
+
+#### 1. The build interpreter, which is python.org's and not Homebrew's
+
+The build interpreter's own deployment target **is** the bundle's, so it is
+chosen rather than found. `build_app.sh` looks under
+`/Library/Frameworks/Python.framework/Versions/`, newest first, floor 3.11 (§6);
+`PAGECOUNT_BUILD_PYTHON` overrides the search. python.org's universal2 installer
+build is compiled against an old SDK deliberately and **carries its own OpenSSL
+inside the framework** rather than linking whatever the machine has. Measured
+over the whole of 3.12.10: 177 slices, arm64 at `minos 11.0`, x86_64 at `10.13`,
+`libssl`/`libcrypto` included.
+
+The path is a search hint and never the evidence: whatever is found must pass
+the same check the finished bundle does, against the same threshold, before the
+build spends a minute on it. A wrong interpreter cannot be corrected later --
+**a prebuilt dylib's minimum cannot be relinked downward**, which is also why
+neither vendoring a different SSL library nor guarding the `ssl` import was on
+the table. Both leave the toolchain broken and hide it.
+
+**This is a second virtualenv, `.venv-build`, and not the dev `.venv`.**
+`run.command` recreates `.venv` from whatever `python3` resolves to, which would
+put a Homebrew interpreter back under the build without anyone touching the
+build. Keeping them apart means the build cannot regress by someone else's
+routine action, and `.venv` stays the one that runs pytest. The cost is that
+they can drift: the suite was therefore run under the build interpreter and its
+shipped dependency set as well -- **313 passed on python.org 3.12.10**, matching
+`.venv` on Homebrew 3.14.6 exactly.
+
+#### 2. A check over the finished bundle that fails, never warns
+
+`packaging/check_deployment_target.py` walks every Mach-O in the built `.app`,
+reads `LC_BUILD_VERSION` and `LC_VERSION_MIN_MACOSX` out of each slice, and
+exits non-zero if any exceeds the declared target. `build_app.sh` runs it as its
+last step; the `zip` target in the `Makefile` runs it again over the zip, which
+it can read in place, because **the zip is what actually gets AirDropped** and
+BLOCKER 1 was present in both.
+
+Stdlib only -- `struct` and `zipfile` -- for the reason `scripts/make_icon.py`
+is: a build check is not a reason to grow a dependency. It deliberately does not
+shell out to `otool` or `vtool`, which need the Xcode command line tools; a
+check that silently does not run on a machine missing them is not a check. Being
+pointed at a path holding no Mach-O at all is an error too, for the same reason.
+
+**It fails the build rather than warning.** A warning at the end of a build
+whose final line is the path to a finished `.app` is a warning that ships:
+nothing downstream reads it, and the artifact is already sitting there looking
+complete. This is the gate the first build did not have, and its absence is the
+whole of how BLOCKER 1 got out.
+
+#### The architecture had the identical disease, and adopting universal2 exposed it
+
+The spec leaves `target_arch=None`, which PyInstaller resolves to
+`platform.machine()` **of the build process** (`building/api.py:464`). Under the
+old Homebrew interpreter that was a constant, because the binary was arm64-only
+and had no other slice to fall into. A universal2 interpreter runs whichever
+slice its *parent* is running, so the target became inheritable the moment the
+interpreter was replaced -- which makes pinning it part of this change and not a
+separate one.
+
+It is not hypothetical here. **`/usr/local/bin/make` is an x86_64 binary running
+under Rosetta and it shadows `/usr/bin/make` on `PATH`**, so
+`./packaging/build_app.sh` froze arm64 while `make build` -- the documented
+command, and the one `make zip` and `make send` go through -- froze x86_64, from
+the same spec and the same virtualenv. `pip` is hit first and harder: run under
+Rosetta it resolves x86_64 wheels, so the environment is Intel before PyInstaller
+looks at it. Here that surfaced as a hard failure only because `pydantic_core`'s
+wheel was already arm64; from a clean `.venv-build` it would have produced a
+working, silent, **Intel** bundle for four arm64 recipients.
+
+So the architecture is declared the same way the OS version is: every use of the
+build interpreter goes through `arch -"$HOST_ARCH"`, the resolved value is
+asserted before freezing, and `--expect-arch` makes the artifact check enforce it
+too.
+
+**`uname -m` cannot be used to find `HOST_ARCH`, and this is the part that is
+genuinely easy to get wrong.** Under Rosetta it reports `x86_64` as well, so it
+*agrees with the wrong answer* -- an assertion built on it passes while the
+bundle is frozen for Intel, which is exactly what happened on the first attempt
+at this fix. `sysctl -n hw.optional.arm64` is a property of the machine rather
+than of the calling process and reads `1` either way. Rosetta only ever
+translates arm64 to x86_64, so that single test is the whole of it; an Intel Mac
+has no such sysctl and falls through to `uname -m`, which is honest there
+because nothing is being translated.
+
+#### The evidence, since no Mac below macOS 26 was available to test on
+
+Binary metadata, before and after, over `packaging/dist/Pink Page Count.app` and
+over the zip:
+
+| | slices | max `minos` | carried by | arch |
+|---|---|---|---|---|
+| before | 61 | **26.0** | `libssl.3.dylib`, `libcrypto.3.dylib` | arm64 |
+| | | 15.0 | 57 more: the Python 3.14 framework, its `lib-dynload`, `libzstd`/`libmpdec`/`liblzma` | |
+| | | 11.0 | 2: the PyInstaller bootloader, `_pydantic_core` | |
+| after | 57 | **11.0** | all 57, `libssl`/`libcrypto` included | arm64 |
+
+Identical figures inside the zip in both cases. **Every slice in the rebuilt
+bundle is `11.0` and `arm64`; there is no second value.** Cross-checked against
+`otool -l` and `lipo -archs`, which agree, and no binary anywhere in the bundle
+is fat -- **`target_arch=None` still yields an arm64-only build (15.6)**, now
+because it is pinned rather than because the interpreter had no choice.
+
+Runtime, with the environment stripped to `env -i`, in the manner of 15.5:
+launches, serves `/` and every `/api/*` route, serves the JS, CSS and the
+vendored font at `200` with full byte counts, `POST /api/entries` returns `201`
+and persists to `DATA_ROOT`, and the four files are created there on first run.
+The built front end and `quotes.txt` inside the bundle are byte-identical to the
+repo's, so nothing user-visible moved. Run against the real `DATA_ROOT` the
+reading log is **byte-identical afterwards**, same as 15.5.
+
+#### What this deliberately does not fix
+
+The Python in the bundle is now 3.12.10 rather than 3.14.6, which is a
+consequence of taking python.org's interpreter and not a goal; §6's floor is
+3.11 and the suite passes on both. BLOCKER 2 (the Gatekeeper instructions),
+BLOCKER 3 (`quotes.txt`), and every FIX SOON item in REVIEW.md are untouched and
+still open. §15.6 stands as written except for its stated *reason* for
+arm64-only, which this section replaces: the build interpreter is universal2
+now, and the bundle is arm64 because the architecture is pinned to the host.
 
 ---
 

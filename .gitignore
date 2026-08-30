@@ -1,4 +1,7 @@
 .venv/
+# The build interpreter's virtualenv (DECISIONS.md 15.8). Separate from .venv
+# because it is python.org's universal2 framework build, not Homebrew's.
+.venv-build/
 __pycache__/
 *.pyc
 .pytest_cache/
