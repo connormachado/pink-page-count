@@ -10,6 +10,9 @@
 # effort, time-use, measurement, or what she should be doing. Anything added
 # later is held to the same bar.
 #
+# A second pass the same day took out one more line for a misattribution. The
+# file parses to 62 quotes, 0 malformed; edit above and that number moves.
+#
 # The section headings below are for whoever edits this file next. "Widely
 # circulated" means the line is real and in general use but the primary source
 # is thin — the attributor is the name it travels under, not a citation.
@@ -92,7 +95,6 @@ When we see land as a community to which we belong, we may begin to use it with 
 #
 Lost causes are the only causes worth fighting for.||Jefferson Smith, in Mr. Smith Goes to Washington
 Be sure you put your feet in the right place, then stand firm.||Abraham Lincoln
-A mind that is stretched by a new experience can never go back to its old dimensions.||Oliver Wendell Holmes Jr.
 Do what you can, with what you have, where you are.||Theodore Roosevelt
 Once you learn to read, you will be forever free.||Frederick Douglass
 The arc of the moral universe is long, but it bends toward justice.||Theodore Parker, popularized by Martin Luther King Jr.

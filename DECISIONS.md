@@ -3237,8 +3237,25 @@ second error, not a fix.
 editing an attribution is how a file acquires errors nobody can see; the doubts
 are in the session report where a human can rule on them.
 
-**The count changed, and the deck re-deals. That is 10.3.1 working.** 63 quotes,
-down from 74. Position is `divmod(day_number, len(quotes))` over a deck reshuffled
+**One of those doubts was ruled on, and the line is gone.** "A mind that is
+stretched by a new experience can never go back to its old dimensions" was
+credited to **Oliver Wendell Holmes Jr.** It is Holmes **Sr.**, in *The Autocrat
+of the Breakfast-Table*, and the shipped wording is a paraphrase rather than his
+sentence. **Removed rather than repaired**, which is the opposite of what the
+Darrow line got, for a reason: there the film's own words were available, so
+correcting the name and the wording together produced something true. Here
+repairing the name alone would ship a paraphrase under a corrected attribution —
+a second error wearing the shape of a fix. It is also the one error this audience
+catches, because law students know which Holmes is the judge. "The life of the
+law has not been logic; it has been experience" stays, and is Holmes Jr.
+
+The remaining three doubts (Roosevelt/Widener, Douglass, Sagan) are deliberately
+left standing. 10.1.2's attributor is the name a line travels under, not a
+citation, and they sit under the heading that says so.
+
+**The count changed, and the deck re-deals. That is 10.3.1 working.** 62 quotes,
+down from 74 — eleven for 8, one for the misattribution above. Position is
+`divmod(day_number, len(quotes))` over a deck reshuffled
 per cycle, so changing the count changes which card today's position draws. No pin
 file, no saved cursor, no exception: 10.3.1's whole argument is that the rotation
 is arithmetic on the day count and nothing is persisted for it. Today's quote
