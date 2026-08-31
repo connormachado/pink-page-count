@@ -37,4 +37,10 @@ web/*.tsbuildinfo
 
 # Finder droppings. Not source, and not this project's business.
 .DS_Store
-REVIEW.md
+
+# REVIEW.md is deliberately NOT ignored, and the rule that ignored it is gone
+# rather than negated -- it was grouped in with .DS_Store, which is how a
+# substantive document came to be treated as a Finder dropping. It is the record
+# of the V1 review, both AUDIT.md and DECISIONS.md cite it by section, and
+# AUDIT.md's blocker table is meaningless without it. Untracked it existed on one
+# disk and would not have survived a clone. It holds no secrets.
