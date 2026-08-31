@@ -1802,8 +1802,12 @@ on `PATH`):
 - **B3** — the corrupt-file halt. The banner still renders correctly and exits
   `2` with the file untouched, but goes to `stderr`, which a Finder-launched
   `.app` has nothing attached to. See 14.2.
-- **B4** — a failed write is still a bare `500` the UI reports as "the reading
-  tracker isn't running right now".
+- ~~**B4** — a failed write is still a bare `500` the UI reports as "the reading
+  tracker isn't running right now".~~ **Fixed in 3.5.1 and 4.5**, in commit
+  `f2c7c8e`, before this sentence was last touched — it was left standing by
+  oversight and is corrected here (18.3). A failed write is a `DataWriteError`
+  the UI reports as a save that did not land (`app/main.py`, `web/src/api.ts`'s
+  `ServerFault`, `web/src/App.tsx`'s load-failed state), and never as an outage.
 - **B5** — `update.command` still cannot work in a bundle; there is no `.git`.
   Nothing in this section ships it, and the bundle has no update story at all.
 - **S1, S2, S3, S6** — `run.command` / `update.command` issues. Untouched. They
@@ -1820,8 +1824,10 @@ on `PATH`):
 
 The bundle is unsigned and un-notarized. On another Mac it arrives quarantined
 and Gatekeeper refuses it outright — AUDIT.md S7, unchanged and now the single
-biggest obstacle to actually handing this to five people. A recipient can
-right-click > Open as a workaround; that is not a distribution plan.
+biggest obstacle to actually handing this to five people. A recipient can clear
+the block by hand, once, per **18.1** — on macOS 15 and later that is System
+Settings > Privacy & Security > Open Anyway, not the Control-click > Open this
+sentence used to name. Either way it is a workaround, not a distribution plan.
 
 It is also **arm64 only**, because the Python that builds it is
 (`target_arch=None` means host architecture). A recipient on an Intel Mac cannot
@@ -3130,6 +3136,141 @@ window. Both are outside the range this section sweeps, and neither is reachable
 without deliberately narrowing the window past the point where the app has a
 usable column at all.
 
-**Not fixed here, and unchanged:** B3, B4, B5, S1–S7. This amendment was scoped
+**Not fixed here, and unchanged:** B3, B5, S1–S7. This amendment was scoped
 to layout: no stat changed what it computes, no endpoint changed what it returns,
 and no copy changed anywhere.
+
+**This list said "B4" until 18.3 struck it.** B4 was fixed in `f2c7c8e`, three
+commits before this section was written; naming it here was a copied list, not an
+observation. 3.5.1 and 4.5 are the description of the fix, and the tests are
+`tests/test_write_failures.py` and `web/src/__tests__/errors.test.tsx`.
+
+---
+
+## 18. Shipping V1: the copy a recipient actually reads
+
+REVIEW.md found three SHIP BLOCKERS. **BLOCKER 1** (the bundle only ran on macOS
+26) was closed by 15.8. This section closes the other two. Neither touches
+schema, storage, an endpoint, or a line of layout — 18.1 is instructions, 18.2 is
+the contents of `quotes.txt`, and 18.3 is a correction to this file about itself.
+
+### 18.1 The Gatekeeper route is System Settings, and it is the primary path
+
+**macOS 15 removed the Control-click > Open bypass for unsigned apps.** On
+Sequoia and later the first dialog offers Move to Trash and Done, and nothing
+else. Every install instruction in this repo led with Control-click > Open and
+filed the real route as a fallback, which means a recipient following the written
+steps arrived at a dialog with no button that does what the next step told her to
+click. Three recipients, no help desk.
+
+The route, written as the rule and not the exception:
+
+1. **Double-click the app. macOS blocks it** and says it cannot verify the
+   developer. Say so before it happens, and say it is expected — a recipient who
+   was not warned reads this dialog as "the app is broken", which is the same
+   outcome 16 exists to prevent, arriving through a door 16 does not cover.
+2. **System Settings > Privacy & Security > Security.** A line there names Pink
+   Page Count as blocked and carries an **Open Anyway** button.
+3. **Confirm**, with Touch ID or the login password if asked. It opens, and every
+   launch after that is an ordinary double-click.
+
+Control-click > Open survives as **one line, for older systems only**. It is a
+note, never a step.
+
+Rewritten in `how-to-install.md` (the recipient-facing copy — the audience is a
+law student who has never opened Terminal, so: short sentences, no jargon, no
+account of what code signing is), `README.md`'s setup step 5, the AirDrop
+procedure in `build-send-workflow.md`, and the closing `say` block of
+`packaging/build_app.sh`, which is the last thing the developer reads before
+sending the zip. 15.6's sentence is corrected in place: it described the
+workaround as Control-click, which stopped being true a major version ago.
+
+**This does not make the bundle signed.** 15.6 is unchanged on that point and
+still open. This section fixes the instructions, which were wrong independently
+of the signing decision and would still be wrong if the app were notarized
+tomorrow.
+
+### 18.2 `quotes.txt` has had its 8 review, and the file no longer carries the instruction
+
+The file grew 20 > 51 > 74 across three sessions and the 10.5 pass was re-run
+only over the first 20. It also shipped a header reading "TIER B — widely
+circulated, sourcing looser. **Review before shipping.**" over eight quotes, and
+shipped. **An instruction that has been executed must not outlive itself**: a
+standing "review before shipping" that survives the review it asked for reads, to
+the next session, as a review that never happened.
+
+The review is done. The header is gone, and in its place is a dated note saying
+what was checked. Sourcing tiers survive as section labels because they are
+useful to whoever edits the file next; the instruction does not.
+
+**The test each line had to pass**, which is 8 and 10.5 made concrete: *read at
+1am during finals, above her own page count — does it comfort her or accuse her?*
+
+**Eleven lines were removed.** The line the removals draw, and the reason the
+file is not simply gutted of every imperative: this file is full of instructions
+about **conviction and the world** — speak out, fight for what you care about,
+decide what difference you want to make — and those stay. What goes is every line
+about **her interior**: effort, diligence, time-use, productivity, measurement,
+alarm, and being ranked against other people. "Fight for the things that you care
+about" is the file's register. "The leading rule for the lawyer is diligence" is
+a performance review.
+
+**Removed, not reworded.** A rewritten quote is not a quote, and the honest move
+when a line fails 8 is to drop it. Every removed line is listed verbatim in the
+session report so any of them can be restored deliberately.
+
+Six of the eleven are the lines REVIEW.md BLOCKER 3 names. The other five came out
+of reading the whole file rather than the flagged lines: 10.5 is a property of the
+file, not a list of known-bad entries.
+
+**One attribution was wrong and is corrected.** "Lost causes are the only ones
+worth fighting for" was credited to **Clarence Darrow**. It is Jefferson Smith's
+line in *Mr. Smith Goes to Washington* (1939). 10.1.2's argument for attribution
+is that an unattributed quote reads as the app claiming it; a misattributed one is
+the same defect pointed the other way, and it goes out over a name that is not
+ours to a reader with no way to check it. The
+line stays, now credited to the film — and in the film's own wording ("the only
+causes"), because attributing a paraphrase to a source it does not match is a
+second error, not a fix.
+
+**Other doubtful attributions are reported, not silently changed.** Quietly
+editing an attribution is how a file acquires errors nobody can see; the doubts
+are in the session report where a human can rule on them.
+
+**The count changed, and the deck re-deals. That is 10.3.1 working.** 63 quotes,
+down from 74. Position is `divmod(day_number, len(quotes))` over a deck reshuffled
+per cycle, so changing the count changes which card today's position draws. No pin
+file, no saved cursor, no exception: 10.3.1's whole argument is that the rotation
+is arithmetic on the day count and nothing is persisted for it. Today's quote
+changing once, silently, is the documented cost of editing the list, and it is
+cheaper than a cursor file that would have to answer what happens across the days
+the app was not open.
+
+### 18.3 Two sections asserted B4 was unfixed, three commits after it was fixed
+
+`15.5` ("a failed write is still a bare `500` the UI reports as 'the reading
+tracker isn't running right now'", present tense) and `17.7`'s not-fixed-here list
+both named **B4** as open. B4 was fixed in `f2c7c8e`; **3.5.1** and **4.5**
+describe the fix, and `tests/test_write_failures.py` and
+`web/src/__tests__/errors.test.tsx` cover it. 17.7 was written after that commit,
+so its list was copied forward rather than checked.
+
+Both are struck in place, with the fix named. `16.4`'s copy of the same list is
+left alone: it is a fair record of what was true in that session, which is what a
+"what is verified" section written at the time is for. The two struck here are
+not — they are the newest statements in the file, and CLAUDE.md's rule that this
+file is authoritative is exactly what makes a stale present-tense claim expensive.
+The next session reads 17.7, believes a failed save still reports an outage, and
+either re-fixes a fixed bug or designs around one that is gone.
+
+### 18.4 Found in scope, fixed nowhere: AUDIT.md's blocker table
+
+`AUDIT.md`'s "V1 review blocker status" table still records BLOCKER 2 and BLOCKER
+3 as **Open**, with line numbers into the files this section just rewrote. That
+table is the tracking record for exactly these two items, and it is now wrong in
+the same way 18.3 describes. It was outside this session's scope and was not
+edited. It is the first thing the next session should fix.
+
+`REVIEW.md` itself is left as written. It is read-only history — it records what
+was true when it was read, and AUDIT.md's table exists precisely so that history
+does not have to be edited to stay accurate.

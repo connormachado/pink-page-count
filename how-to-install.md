@@ -4,11 +4,15 @@
 
 2. Drag it into your Applications folder.
 
-3. Right-click it (or Control-click) and choose Open. A warning will come up saying it's from an unidentified developer — click Open again. You only have to do this the first time.
+3. Double-click Pink Page Count. A box comes up saying macOS can't verify the developer. That's expected — it happens because I made this for you instead of putting it in the App Store. Click **Done**.
 
-If that warning doesn't give you an Open button: close it, go to the Apple menu → System Settings → Privacy & Security, scroll down, and click "Open Anyway." Then try step 3 again.
+4. Open the Apple menu → **System Settings**. Click **Privacy & Security** in the sidebar, then scroll down to the **Security** section. There's a line there that says Pink Page Count was blocked. Click **Open Anyway** next to it.
 
-4. It opens in a browser tab. That's the app.
+5. Confirm when it asks, and use Touch ID or your Mac password if it wants that.
+
+6. The app opens in a browser tab. That's the app. From now on you just double-click it like anything else — you only do steps 3 to 5 once.
+
+On an older Mac, step 3 may give you a box with an **Open** button in it. If it does, click Open and you're done — skip steps 4 and 5.
 
 Using it
 

@@ -263,10 +263,15 @@ Setting this up fresh on a Mac, in order:
    ```bash
    chmod +x run.command update.command
    ```
-5. **First launch:** double-click `run.command`. macOS Gatekeeper will likely refuse
-   the first time since the script isn't signed — right-click (or Control-click)
-   `run.command`, choose **Open**, and confirm in the dialog that appears. After that,
-   plain double-clicks work.
+5. **First launch:** double-click `run.command`. If macOS refuses it — the script is
+   unsigned — the route on macOS 15 and later is **System Settings → Privacy &
+   Security → Security**, where a line naming the blocked item has an **Open Anyway**
+   button; click it and confirm. macOS 15 removed the Control-click-to-Open bypass, so
+   right-click → **Open** is only a fallback for older systems. After that, plain
+   double-clicks work.
+
+   The same route applies to the frozen `.app` a recipient receives, and
+   `how-to-install.md` is the copy written for them.
 6. **Put it on the Desktop:** select `run.command` in Finder, ⌘L to make an alias
    (or Option-⌘-drag it to the Desktop), and rename the alias to whatever you like.
    It resolves its own real location, so the alias works from anywhere.

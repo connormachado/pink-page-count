@@ -4,14 +4,20 @@
 # Lines beginning with # are comments and are ignored.
 # A line with no || is treated as a quote with no attributor.
 #
-# Two review tiers below. TIER A is solidly documented. TIER B is widely
-# circulated but the sourcing is looser — read those before shipping.
+# Every line here has been read against DECISIONS.md 8 and 10.5 (2026-08-30,
+# recorded in 18.2). The test each one had to pass: read at 1am during finals,
+# above her own page count, does it comfort or accuse? Nothing about discipline,
+# effort, time-use, measurement, or what she should be doing. Anything added
+# later is held to the same bar.
+#
+# The section headings below are for whoever edits this file next. "Widely
+# circulated" means the line is real and in general use but the primary source
+# is thin — the attributor is the name it travels under, not a citation.
 #
 # ============================================================
-# TIER A — well documented
+# Fight / conviction
 # ============================================================
 #
-# --- Fight / conviction ---
 Where you see wrong or inequality or injustice, speak out, because this is your country.||Thurgood Marshall
 Fight for the things that you care about, but do it in a way that will lead others to join you.||Ruth Bader Ginsburg
 Women belong in all places where decisions are being made.||Ruth Bader Ginsburg
@@ -26,33 +32,47 @@ If we would guide by the light of reason, we must let our minds be bold.||Louis 
 Sunlight is said to be the best of disinfectants.||Louis D. Brandeis
 The spirit of liberty is the spirit which is not too sure that it is right.||Learned Hand
 Facts are stubborn things.||John Adams
+Each time a man stands up for an ideal, or acts to improve the lot of others, he sends forth a tiny ripple of hope.||Robert F. Kennedy
+The world is before you, and you need not take it or leave it as it was when you came in.||James Baldwin
+Freedom is not something that anybody can be given. Freedom is something people take.||James Baldwin
+There is no such thing as a single-issue struggle because we do not live single-issue lives.||Audre Lorde
+The most common way people give up their power is by thinking they don't have any.||Alice Walker
+Justice is what love looks like in public.||Cornel West
+We are volcanoes. When we women offer our experience as our truth, all the maps change.||Ursula K. Le Guin
 #
-# --- Grit / the long haul ---
+# ============================================================
+# The long haul
+# ============================================================
+#
 Real change, enduring change, happens one step at a time.||Ruth Bader Ginsburg
 So often in life, things that you regard as an impediment turn out to be great, good fortune.||Ruth Bader Ginsburg
-Don't be distracted by emotions like anger, envy, resentment. These just zap energy and waste time.||Ruth Bader Ginsburg
-Reacting in anger or annoyance will not advance one's ability to persuade.||Ruth Bader Ginsburg
-A surplus of effort could overcome a deficit of confidence.||Sonia Sotomayor
 Experience can confine, but it can also enlarge.||Sonia Sotomayor
-Success is to be measured not so much by the position that one has reached as by the obstacles overcome.||Booker T. Washington
 Justice is not to be taken by storm. She is to be wooed by slow advances.||Benjamin N. Cardozo
-Always bear in mind that your own resolution to succeed is more important than any other thing.||Abraham Lincoln
-The leading rule for the lawyer, as for the man of every other calling, is diligence.||Abraham Lincoln
-Far better it is to dare mighty things than to take rank with those poor spirits who neither enjoy much nor suffer much.||Theodore Roosevelt
 We don't accomplish anything in this world alone.||Sandra Day O'Connor
 The power I exert on the court depends on the power of my arguments, not on my gender.||Sandra Day O'Connor
+Caring for myself is not self-indulgence, it is self-preservation, and that is an act of political warfare.||Audre Lorde
+Hope is not the conviction that something will turn out well, but the certainty that something makes sense, regardless of how it turns out.||Václav Havel
+Do not be daunted by the enormity of the world's grief.||Rami Shapiro, rendering Pirkei Avot
+You do not have to be good. You only have to let the soft animal of your body love what it loves.||Mary Oliver
 #
-# --- The craft ---
+# ============================================================
+# The craft
+# ============================================================
+#
 The life of the law has not been logic; it has been experience.||Oliver Wendell Holmes Jr.
 Discourage litigation. Persuade your neighbors to compromise whenever you can.||Abraham Lincoln
 A lawyer without books would be like a workman without tools.||Thomas Jefferson
-It is not enough to be busy. The question is: what are we busy about?||Henry David Thoreau
-Read, read, read. Read everything.||William Faulkner
+Books are a uniquely portable magic.||Stephen King
+There is no frigate like a book to take us lands away.||Emily Dickinson
+A word after a word after a word is power.||Margaret Atwood
+Instructions for living a life: Pay attention. Be astonished. Tell about it.||Mary Oliver
 #
-# --- Environmental law ---
+# ============================================================
+# Environment and nature
+# ============================================================
+#
 The economy is a wholly owned subsidiary of the environment.||Gaylord Nelson
 It's the little things citizens do. That's what will make the difference.||Wangari Maathai
-Wake up, humanity. We're out of time.||Berta Cáceres
 In nature nothing exists alone.||Rachel Carson
 Those who contemplate the beauty of the earth find reserves of strength that will endure as long as life lasts.||Rachel Carson
 High quality water is more than the dream of the conservationists, more than a political slogan.||Edmund S. Muskie
@@ -61,52 +81,22 @@ Conservation is a great moral issue, for it involves the patriotic duty of insur
 The nation behaves well if it treats the natural resources as assets which it must turn over to the next generation increased, and not impaired, in value.||Theodore Roosevelt
 Earth provides enough to satisfy every man's need, but not every man's greed.||Mahatma Gandhi
 To halt the decline of an ecosystem, it is necessary to think like an ecosystem.||Douglas P. Wheeler
+What you do makes a difference, and you have to decide what kind of difference you want to make.||Jane Goodall
+In every walk with nature one receives far more than he seeks.||John Muir
+The clearest way into the Universe is through a forest wilderness.||John Muir
+When we see land as a community to which we belong, we may begin to use it with love and respect.||Aldo Leopold
 #
 # ============================================================
-# TIER B — widely circulated, sourcing looser. Review before shipping.
+# Widely circulated, sourcing looser
 # ============================================================
 #
-Lost causes are the only ones worth fighting for.||Clarence Darrow
-I will study and get ready, and perhaps my chance will come.||Abraham Lincoln
+Lost causes are the only causes worth fighting for.||Jefferson Smith, in Mr. Smith Goes to Washington
 Be sure you put your feet in the right place, then stand firm.||Abraham Lincoln
 A mind that is stretched by a new experience can never go back to its old dimensions.||Oliver Wendell Holmes Jr.
 Do what you can, with what you have, where you are.||Theodore Roosevelt
 Once you learn to read, you will be forever free.||Frederick Douglass
 The arc of the moral universe is long, but it bends toward justice.||Theodore Parker, popularized by Martin Luther King Jr.
 I ask no favor for my sex. All I ask of our brethren is that they take their feet off our necks.||Sarah Grimké, quoted by Ruth Bader Ginsburg
-#
-# ============================================================
-# ADDED — a second pass, warmer register. Every line screened
-# against 10.5: nothing about discipline, grinding, catching up,
-# falling behind, or what she should be doing.
-# ============================================================
-#
-# --- Well documented ---
-Each time a man stands up for an ideal, or acts to improve the lot of others, he sends forth a tiny ripple of hope.||Robert F. Kennedy
-The world is before you, and you need not take it or leave it as it was when you came in.||James Baldwin
-Freedom is not something that anybody can be given. Freedom is something people take.||James Baldwin
-Caring for myself is not self-indulgence, it is self-preservation, and that is an act of political warfare.||Audre Lorde
-There is no such thing as a single-issue struggle because we do not live single-issue lives.||Audre Lorde
-The most common way people give up their power is by thinking they don't have any.||Alice Walker
-Justice is what love looks like in public.||Cornel West
-Hope is not the conviction that something will turn out well, but the certainty that something makes sense, regardless of how it turns out.||Václav Havel
-Do not be daunted by the enormity of the world's grief.||Rami Shapiro, rendering Pirkei Avot
-We are volcanoes. When we women offer our experience as our truth, all the maps change.||Ursula K. Le Guin
-#
-# --- The craft ---
-Books are a uniquely portable magic.||Stephen King
-There is no frigate like a book to take us lands away.||Emily Dickinson
-A word after a word after a word is power.||Margaret Atwood
-You do not have to be good. You only have to let the soft animal of your body love what it loves.||Mary Oliver
-Instructions for living a life: Pay attention. Be astonished. Tell about it.||Mary Oliver
-#
-# --- Nature ---
-What you do makes a difference, and you have to decide what kind of difference you want to make.||Jane Goodall
-In every walk with nature one receives far more than he seeks.||John Muir
-The clearest way into the Universe is through a forest wilderness.||John Muir
-When we see land as a community to which we belong, we may begin to use it with love and respect.||Aldo Leopold
-#
-# --- Widely circulated, sourcing looser ---
 It always seems impossible until it's done.||Nelson Mandela
 Never doubt that a small group of thoughtful, committed citizens can change the world; indeed, it's the only thing that ever has.||Margaret Mead
 I am no longer accepting the things I cannot change. I am changing the things I cannot accept.||Angela Davis

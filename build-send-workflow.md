@@ -29,6 +29,8 @@ and the first one is the one that bites:
 Then:
 
 AirDrop that file, unzip on her Mac, drag to Applications
-Right-click → Open → Open. If no dialog, System Settings → Privacy & Security → Open Anyway
+Double-click it. macOS blocks it and says it cannot verify the developer — expected, click Done.
+System Settings → Privacy & Security → Security → "Open Anyway" on the Pink Page Count line → confirm.
+That is the primary path, not a fallback: macOS 15 removed Control-click → Open for unsigned apps, so it is only worth trying on an older Mac. Every launch after the first is a plain double-click.
 Log one real entry, then confirm ~/Library/Application Support/PinkPageCount/entries.json exists on her machine and contains it
 Show her: how to log, that closing the tab quits it, that double-clicking always brings it back, and where "Download a backup" is
